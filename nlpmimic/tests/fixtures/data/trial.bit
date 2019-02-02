@@ -1,0 +1,77 @@
+
+
+1   Food       food       food       NN   NN   _  _  2   2   NMOD   NMOD   _  _             A1  _   _   _   
+2   prices     price      price      NNS  NNS  _  _  3   3   SBJ    SBJ    Y  price.01      A2  _   _   _   
+3   are        be         be         VBP  VBP  _  _  19  19  OBJ    OBJ    _  _             _   _   _   _   
+4   expected   expect     expect     VBN  VBN  _  _  3   3   VC     VC     _  _             _   _   _   _   
+5   to         to         to         TO   TO   _  _  4   4   OPRD   OPRD   _  _             _   _   _   _   
+6   be         be         be         VB   VB   _  _  5   5   IM     IM     _  _             _   _   _   _   
+7   unchanged  unchanged  unchanged  JJ   JJ   _  _  6   6   PRD    PRD    _  _             _   _   _   _   
+8   ,          ,          ,          ,    ,    _  _  3   3   P      P      _  _             _   _   _   _   
+9   but        but        but        CC   CC   _  _  3   3   COORD  COORD  _  _             _   _   _   _   
+10  energy     energy     energy     NN   NN   _  _  11  11  NMOD   NMOD   _  _             _   A1  _   _   
+11  costs      costs      costs      NNS  NNS  _  _  12  12  SBJ    SBJ    Y  cost.01       _   _   A1  _   
+12  jumped     jump       jump       VBD  VBD  _  _  9   9   CONJ   CONJ   _  _             _   _   _   _   
+13  as         as         as         RB   RB   _  _  16  14  NMOD   DEP    _  _             _   _   _   _   
+14  much       much       much       JJ   JJ   _  _  16  17  NMOD   NMOD   _  _             _   _   _   _   
+15  as         as         as         IN   IN   _  _  16  14  NMOD   DEP    _  _             _   _   _   _   
+16  4          4          4          CD   CD   _  _  17  14  NMOD   DEP    _  _             _   _   _   _   
+17  %          %          %          NN   NN   _  _  12  12  OBJ    EXT    Y  %.01          _   _   _   _   
+18  ,          ,          ,          ,    ,    _  _  19  19  P      P      _  _             _   _   _   _   
+19  said       say        say        VBD  VBD  _  _  0   0   ROOT   ROOT   _  _             _   _   _   _   
+20  Gary       gary       gary       NNP  NNP  _  _  21  21  NAME   NAME   _  _             _   _   _   _   
+21  Ciminero   ciminero   ciminero   NNP  NNP  _  _  19  19  SBJ    SBJ    _  _             _   _   _   _   
+22  ,          ,          ,          ,    ,    _  _  21  21  P      P      _  _             _   _   _   _   
+23  economist  economist  economist  NN   NN   _  _  21  21  APPO   APPO   Y  economist.01  _   _   _   A0  
+24  at         at         at         IN   IN   _  _  23  23  LOC    LOC    _  _             _   _   _   A2  
+25  Fleet      fleet      fleet      NNP  NNP  _  _  29  29  NAME   NAME   _  _             _   _   _   _   
+26  /          /          /          :    :    _  _  25  25  COORD  COORD  _  _             _   _   _   _   
+27  Norstar    norstar    norstar    NNP  NNP  _  _  26  26  CONJ   CONJ   _  _             _   _   _   _   
+28  Financial  financial  financial  NNP  NNP  _  _  29  29  NAME   NAME   _  _             _   _   _   _   
+29  Group      group      group      NNP  NNP  _  _  24  24  PMOD   PMOD   _  _             _   _   _   _   
+30  .          .          .          .    .    _  _  19  19  P      P      _  _             _   _   _   _   
+
+
+
+1	The	the	the	DT	DT	_	_	2	2	NMOD	NMOD	_	_	_	_	_	_
+2	economy	economy	economy	NN	NN	_	_	4	4	NMOD	NMOD	_	_	A1	_	_	_
+3	's	's	's	POS	POS	_	_	2	2	SUFFIX	SUFFIX	_	_	_	_	_	_
+4	temperature	temperature	temperature	NN	NN	_	_	5	5	SBJ	SBJ	Y	temperature.01	A2	A1	_	_
+5	will	will	will	MD	MD	_	_	0	0	ROOT	ROOT	_	_	_	AM-MOD	_	_
+6	be	be	be	VB	VB	_	_	5	5	VC	VC	_	_	_	_	_	_
+7	taken	take	take	VBN	VBN	_	_	6	6	VC	VC	Y	take.01	_	_	_	_
+8	from	from	from	IN	IN	_	_	7	7	ADV	ADV	_	_	_	A2	_	_
+9	several	several	several	DT	DT	_	_	11	11	NMOD	NMOD	_	_	_	_	_	_
+10	vantage	vantage	vantage	NN	NN	_	_	11	11	NMOD	NMOD	_	_	_	_	A1	_
+11	points	point	point	NNS	NNS	_	_	8	8	PMOD	PMOD	Y	point.02	_	_	_	_
+12	this	this	this	DT	DT	_	_	13	13	NMOD	NMOD	_	_	_	_	_	_
+13	week	week	week	NN	NN	_	_	7	7	TMP	TMP	_	_	_	AM-TMP	_	_
+14	,	,	,	,	,	_	_	7	7	P	P	_	_	_	_	_	_
+15	with	with	with	IN	IN	_	_	7	7	ADV	ADV	_	_	_	AM-ADV	_	_
+16	readings	reading	reading	NNS	NNS	_	_	15	15	PMOD	PMOD	Y	reading.01	_	_	_	_
+17	on	on	on	IN	IN	_	_	16	16	NMOD	NMOD	_	_	_	_	_	A1
+18	trade	trade	trade	NN	NN	_	_	17	17	PMOD	PMOD	_	_	_	_	_	_
+19	,	,	,	,	,	_	_	18	18	P	P	_	_	_	_	_	_
+20	output	output	output	NN	NN	_	_	18	18	COORD	COORD	_	_	_	_	_	_
+21	,	,	,	,	,	_	_	20	20	P	P	_	_	_	_	_	_
+22	housing	housing	housing	NN	NN	_	_	20	20	COORD	COORD	_	_	_	_	_	_
+23	and	and	and	CC	CC	_	_	22	22	COORD	COORD	_	_	_	_	_	_
+24	inflation	inflation	inflation	NN	NN	_	_	23	23	CONJ	CONJ	_	_	_	_	_	_
+25	.	.	.	.	.	_	_	5	5	P	P	_	_	_	_	_	_
+
+
+1	The	the	the	FAKE	DT	_	_	4	4	NMOD	NMOD	_	_
+2	most	most	most	RBS	RBS	_	_	3	3	FAKE	AMOD	_	_
+3	troublesome	troublesome	troublesome	JJ	JJ	_	_	4	4	NMOD	NMOD	_	_
+4	report	report	report	NN	NN	_	_	5	5	SBJ	SBJ	_	_
+5	may	may	may	MD	MD	_	_	0	0	ROOT	ROOT	_	_
+6	be	be	be	VB	VB	_	_	5	5	VC	VC	_	_
+7	the	the	the	DT	DT	_	_	11	11	NMOD	NMOD	_	_
+8	August	august	august	NNP	NNP	_	_	11	11	NMOD	NMOD	_	_
+9	merchandise	merchandise	merchandise	NN	NN	_	_	10	10	NMOD	NMOD	_	_
+10	trade	trade	trade	NN	NN	_	_	11	11	NMOD	NMOD    _	_
+11	deficit	deficit	deficit	NN	NN	_	_	6	6	PRD	PRD _	_
+12	due	due	due	JJ	JJ	_	_	13	11	AMOD	APPO	_	_
+13	out	out	out	IN	IN	_	_	11	12	APPO	AMOD	_	_
+14	tomorrow	tomorrow	tomorrow	NN	NN	_	_	13	12	TMP	TMP	_	_
+15	.	.	.	.	.	_	_	5	5	P	P	_	_

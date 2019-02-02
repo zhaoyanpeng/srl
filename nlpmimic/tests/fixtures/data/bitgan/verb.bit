@@ -1,0 +1,45 @@
+1   Economists     economist    economist      NNS  NNS  _  _  2   2   SBJ    SBJ    _  _          A1      _   _       
+2   are            be           be             VBP  VBP  _  _  0   0   ROOT   ROOT   _  _          _       _   _       
+3   divided        divide       divide         VBN  VBN  _  _  2   2   VC     VC     Y  divide.02  _       _   _       
+4   as             as           as             IN   IN   _  _  3   3   ADV    ADV    _  _          AM-CAU  _   _       
+5   to             to           to             TO   TO   _  _  4   4   PMOD   PMOD   _  _          _       _   _       
+6   how            how          how            WRB  WRB  _  _  9   9   NMOD   NMOD   _  _          _       _   _       
+7   much           much         much           JJ   JJ   _  _  6   6   AMOD   AMOD   _  _          _       _   _       
+8   manufacturing  manufacture  manufacturing  VBG  NN   _  _  9   9   NMOD   NMOD   _  _          _       _   _       
+9   strength       strength     strength       NN   NN   _  _  13  5   OBJ    PMOD   _  _          _       _   A1      
+10  they           they         they           PRP  PRP  _  _  11  11  SBJ    SBJ    _  _          _       A0  A0      
+11  expect         expect       expect         VBP  VBP  _  _  5   9   PMOD   NMOD   Y  expect.01  _       _   _       
+12  to             to           to             TO   TO   _  _  11  11  OPRD   OPRD   _  _          _       A1  _       
+13  see            see          see            VB   VB   _  _  12  12  IM     IM     Y  see.01     _       _   _       
+14  in             in           in             IN   IN   _  _  13  13  LOC    TMP    _  _          _       _   AM-LOC  
+15  September      september    september      NNP  NNP  _  _  16  16  NMOD   NMOD   _  _          _       _   _       
+16  reports        report       report         NNS  NNS  _  _  14  14  PMOD   PMOD   _  _          _       _   _       
+17  on             on           on             IN   IN   _  _  16  16  NMOD   NMOD   _  _          _       _   _       
+18  industrial     industrial   industrial     JJ   JJ   _  _  19  19  NMOD   NMOD   _  _          _       _   _       
+19  production     production   production     NN   NN   _  _  17  17  PMOD   PMOD   _  _          _       _   _       
+20  and            and          and            CC   CC   _  _  19  19  COORD  COORD  _  _          _       _   _       
+21  capacity       capacity     capacity       NN   NN   _  _  22  20  NMOD   CONJ   _  _          _       _   _       
+22  utilization    utilization  utilization    NN   NN   _  _  20  13  CONJ   OBJ    _  _          _       _   _       
+23  ,              ,            ,              ,    ,    _  _  16  13  P      P      _  _          _       _   _       
+24  also           also         also           RB   RB   _  _  16  13  APPO   ADV    _  _          _       _   _       
+25  due            due          due            JJ   JJ   _  _  24  26  AMOD   NMOD   _  _          _       _   _       
+26  tomorrow       tomorrow     tomorrow       NN   NN   _  _  24  13  TMP    TMP    _  _          _       _   _       
+27  .              .            .              .    .    _  _  2   2   P      P      _  _          _       _   _       
+
+1   Meanwhile  meanwhile  meanwhile  RB   RB   _  _  10  10  ADV   TMP   _  _         AM-TMP  _   
+2   ,          ,          ,          ,    ,    _  _  10  10  P     P     _  _         _       _   
+3   September  september  september  NNP  NNP  _  _  5   5   NMOD  NMOD  _  _         _       _   
+4   housing    housing    housing    NN   NN   _  _  5   5   NMOD  NMOD  _  _         _       _   
+5   starts     start      start      NNS  NNS  _  _  10  10  SBJ   SBJ   _  _         A1      A1  
+6   ,          ,          ,          ,    ,    _  _  5   5   P     P     _  _         _       _   
+7   due        due        due        JJ   JJ   _  _  5   8   APPO  NMOD  _  _         _       _   
+8   Wednesday  wednesday  wednesday  NNP  NNP  _  _  7   5   AMOD  APPO  _  _         _       _   
+9   ,          ,          ,          ,    ,    _  _  5   5   P     P     _  _         _       _   
+10  are        be         be         VBP  VBP  _  _  0   0   ROOT  ROOT  _  _         _       _   
+11  thought    think      think      VBN  VBN  _  _  10  10  VC    VC    Y  think.01  _       _   
+12  to         to         to         TO   TO   _  _  11  11  OPRD  OPRD  _  _         C-A1    _   
+13  have       have       have       VB   VB   _  _  12  12  IM    IM    _  _         _       _   
+14  inched     inch       inch       VBN  VBD  _  _  13  13  VC    VC    Y  inch.01   _       _   
+15  upward     upward     upward     RB   RB   _  _  14  14  ADV   DIR   _  _         _       A5  
+16  .          .          .          .    .    _  _  10  10  P     P     _  _         _       _   
+

@@ -1,0 +1,1 @@
+from nlpmimic.predictors.srl_naive_predictor import NaiveSrlPredictor
