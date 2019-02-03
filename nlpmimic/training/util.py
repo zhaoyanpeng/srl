@@ -80,7 +80,9 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
 
     return datasets
 
-def rescale_gradients(model: Model, param_signatures: List[str], grad_norm: Optional[float] = None) -> Optional[float]:
+def rescale_gradients(model: Model, 
+                      param_signatures: List[str], 
+                      grad_norm: Optional[float] = None) -> Optional[float]:
     """
     Performs gradient rescaling. Is a no-op if gradient rescaling is not enabled.
     """
@@ -94,7 +96,11 @@ def rescale_gradients(model: Model, param_signatures: List[str], grad_norm: Opti
         return sparse_clip_norm(parameters_to_clip, grad_norm)
     return None
 
-def get_metrics(model: Model, total_loss: float, num_batches: int, reconstruction_loss: float = None, reset: bool = False) -> Dict[str, float]:
+def get_metrics(model: Model, 
+                total_loss: float, 
+                num_batches: int, 
+                reconstruction_loss: float = None, 
+                reset: bool = False) -> Dict[str, float]:
     """
     Gets the metrics but sets ``"loss"`` to
     the total loss divided by the ``num_batches`` so that
@@ -104,4 +110,6 @@ def get_metrics(model: Model, total_loss: float, num_batches: int, reconstructio
     metrics["loss"] = float(total_loss / num_batches) if num_batches > 0 else 0.0
     if reconstruction_loss is not None:
         metrics["rec_loss"] = float(reconstruction_loss / num_batches) if num_batches > 0 else 0.0
+    else:
+        metrics["rec_loss"] = float('inf') 
     return metrics

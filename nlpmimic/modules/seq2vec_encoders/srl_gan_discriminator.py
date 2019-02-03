@@ -36,7 +36,6 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         super(GanSrlDiscriminator, self).__init__()
         # Required to be wrapped with a :class:`PytorchSeq2SeqWrapper`.
         self.encoder = CnnEncoder(embedding_dim, num_filters, output_dim = output_dim) 
-        print(self.encoder) 
 
     def forward(self,  # pylint: disable=arguments-differ
                 inputs: torch.Tensor,

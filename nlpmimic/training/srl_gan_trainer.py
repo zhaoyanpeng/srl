@@ -27,12 +27,12 @@ from allennlp.training.checkpointer import Checkpointer
 from allennlp.training.learning_rate_schedulers import LearningRateScheduler
 from allennlp.training.metric_tracker import MetricTracker
 from allennlp.training.optimizers import Optimizer
-from allennlp.training.tensorboard_writer import TensorboardWriter
 from allennlp.training.trainer_base import TrainerBase
 from allennlp.training.trainer import Trainer
 from allennlp.training import util as training_util
 
 from nlpmimic.training import util as mimic_training_util
+from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -100,7 +100,19 @@ class GanSrlTrainer(Trainer):
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
-    
+        
+        self._tensorboard = GanSrlTensorboardWriter(
+                get_batch_num_total=lambda: self._batch_num_total,
+                serialization_dir=serialization_dir,
+                summary_interval=summary_interval,
+                histogram_interval=histogram_interval,
+                should_log_parameter_statistics=should_log_parameter_statistics,
+                should_log_learning_rate=should_log_learning_rate) 
+        
+        # Enable activation logging.
+        if histogram_interval is not None:
+            self._tensorboard.enable_activation_logging(self.model)
+
     def _sample(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
         instances = ensure_list(instances)
         random.seed(0)
@@ -208,8 +220,7 @@ class GanSrlTrainer(Trainer):
                 param_updates[name].sub_(param.detach().cpu())
                 update_norm = torch.norm(param_updates[name].view(-1, ))
                 param_norm = torch.norm(param.view(-1, )).cpu()
-                self._tensorboard.add_train_scalar("gradient_update/" + name,
-                                                   update_norm / (param_norm + 1e-7))
+                self._tensorboard.add_train_scalar("gradient_update/" + name, update_norm / (param_norm + 1e-7))
         else:
             optimizer.step()
         return batch_grad_norm 
@@ -302,15 +313,21 @@ class GanSrlTrainer(Trainer):
 
             # Log parameter values to Tensorboard
             if self._tensorboard.should_log_this_batch():
-                #self._tensorboard.log_parameter_and_gradient_statistics(self.model, batch_grad_norm)
-                #self._tensorboard.log_learning_rates(self.model, self.optimizer)
+                self._tensorboard.log_parameter_and_gradient_statistics(self.model, 
+                                                                        gen_batch_grad_norm,
+                                                                        self.parameter_names)
+                self._tensorboard.log_parameter_and_gradient_statistics(self.model, 
+                                                                        dis_batch_grad_norm,
+                                                                        self.dis_param_names)
+                self._tensorboard.log_learning_rates(self.model, self.optimizer)
+                self._tensorboard.log_learning_rates(self.model, self.optimizer_dis)
 
                 self._tensorboard.add_train_scalar("loss/loss_train", metrics["loss"])
+                self._tensorboard.add_train_scalar("loss/rec_loss_train", metrics["rec_loss"])
                 self._tensorboard.log_metrics({"epoch_metrics/" + k: v for k, v in metrics.items()})
 
             if self._tensorboard.should_log_histograms_this_batch():
-                #self._tensorboard.log_histograms(self.model, histogram_parameters)
-                pass
+                self._tensorboard.log_histograms(self.model, histogram_parameters)
 
             if self._log_batch_size_period:
                 cur_batch = training_util.get_batch_size(batch)
@@ -516,15 +533,15 @@ class GanSrlTrainer(Trainer):
 
         pieces = TrainerPieces.from_params(params, serialization_dir, recover)  # pylint: disable=no-member
         return cls.instantiate(model=pieces.model,
-                                   serialization_dir = serialization_dir,
-                                   iterator = pieces.iterator,
-                                   train_data = pieces.train_dataset,
-                                   train_dx_data = pieces.train_dx_dataset,
-                                   train_dy_data = pieces.train_dy_dataset,
-                                   validation_data = pieces.validation_dataset,
-                                   params = pieces.params,
-                                   validation_iterator = pieces.validation_iterator,
-                                   discriminator_param_name=pieces.dis_param_name)
+                               serialization_dir = serialization_dir,
+                               iterator = pieces.iterator,
+                               train_data = pieces.train_dataset,
+                               train_dx_data = pieces.train_dx_dataset,
+                               train_dy_data = pieces.train_dy_dataset,
+                               validation_data = pieces.validation_dataset,
+                               params = pieces.params,
+                               validation_iterator = pieces.validation_iterator,
+                               discriminator_param_name=pieces.dis_param_name)
 
     
     # Requires custom from_params.
