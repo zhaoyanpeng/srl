@@ -1,4 +1,4 @@
-root="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/allennlp_shit"
+root="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 flag="keep"
 if [ ! -z $1 ]; then
     flag=$1

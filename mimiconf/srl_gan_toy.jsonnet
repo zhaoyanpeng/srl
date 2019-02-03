@@ -60,7 +60,7 @@
       "use_highway": true
     },
     "srl_encoder": {
-      "type": "cnn",
+      "type": "srl_gan_dis",
       "embedding_dim": 4,
       "num_filters": 50,
       "output_dim": 1

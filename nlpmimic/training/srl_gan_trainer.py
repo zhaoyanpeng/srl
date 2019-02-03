@@ -571,24 +571,16 @@ class GanSrlTrainer(Trainer):
                 else:
                     parameter_names.append(n) 
                     parameters.append([n, p])
-        
-        """
-        for x in parameter_names:
-            print(x)
-        print()
-        for x in dis_param_names:
-            print(x)
-        import sys
-        sys.exit(0)
-        """
 
-        if dis_params:
-            logger.info("Following parameters belong to the discriminator (with gradient):")
-            for x in dis_params:
-                logger.info(x[0])
-            logger.info("Following parameters belong to the generator (with gradient):")
-            for x in parameters:
-                logger.info(x[0])
+        logger.info("Following parameters belong to the discriminator (with gradient):")
+        for x in dis_param_names:
+            logger.info(x)
+        logger.info("Following parameters belong to the generator (with gradient):")
+        for x in parameter_names:
+            logger.info(x)
+        
+        #import sys
+        #sys.exit(0)
         
         optimizer = Optimizer.from_params(parameters, params.pop("optimizer"))
         if dis_params:
