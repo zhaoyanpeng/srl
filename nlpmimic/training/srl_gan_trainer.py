@@ -291,7 +291,7 @@ class GanSrlTrainer(Trainer):
             if torch.isnan(dis_loss):
                 raise ValueError("nan loss encountered")
             dis_loss.backward()
-            dis_batch_grad_norm = self._gradient(self.optimizer, False, batch_num_total)
+            dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
             #logger.info('------------------------optimizing the discriminator')
  
             #cnt += 1
