@@ -81,7 +81,7 @@
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 10,
+    "num_epochs": 5,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,

@@ -62,18 +62,9 @@ class GanSemanticRoleLabeler(Model):
         initializer(self)
     
     def _create_label_masks(self, 
-                            batch_size: int,
                             length_mask: torch.LongTensor,  
-                            srl_labels: torch.LongTensor) -> torch.Tensor:
+                            predicted_srl_labels: torch.LongTensor) -> torch.Tensor:
         # copy a tensor that does not require gradients
-        full_label_mask = length_mask.clone() 
-        # create a reference to the noun part
-        noun_label_mask = full_label_mask[batch_size:, :] 
-        # should assert equal size
-        noun_label_mask[srl_labels == 0] = 0 
-        # element-wise mulplication
-        #full_label_mask = full_label_mask * length_mask 
-        # new mask for srl feature extraction
         return full_label_mask
 
     def forward(self,  # type: ignore
@@ -100,7 +91,7 @@ class GanSemanticRoleLabeler(Model):
         batch_size, length, _ = embedded_token_input.size() 
         mask = get_text_field_mask(tokens)
         
-        if self.training: # FIX ME: avoid unnecessary embedding look up when retriving generator loss
+        if self.training: # FIX ME: avoid unnecessary embedding look up when retrieving generator loss
             embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
             embedded_predicates = self.predicate_embedder(predicates)
             # (batch_size, length, dim) -> (batch_size, dim, length)
@@ -164,12 +155,16 @@ class GanSemanticRoleLabeler(Model):
         
         if self.training:
             noun_labels = self._logits_to_index(class_probabilities, used_mask) 
-            label_masks = self._create_label_masks(batch_size, mask, noun_labels) 
+            predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
+            # srl label masks 
+            full_label_masks = mask.clone()
+            full_label_masks[predicted_labels == 0] = 0
 
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
+            print('srl_frames: ', srl_frames, srl_frames.requires_grad)
             print('mask: ', mask, mask.requires_grad)
             print('used_mask ', used_mask, used_mask.requires_grad)
-            print('label_masks ', label_masks, label_masks.requires_grad)
+            print('label_masks ', full_label_masks, full_label_masks.requires_grad)
 
             #import sys
             #sys.exit(0)
@@ -186,7 +181,7 @@ class GanSemanticRoleLabeler(Model):
                               'n_embedded_predicates': embedded_noun_predicates,
                               'n_embedded_labels': embedded_noun_labels}
 
-            self._gan_loss(gan_loss_input, label_masks, output_dict, retrive_generator_loss)
+            self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss)
             
             # assumming we can access gold labels for nominal part
             if reconstruction_loss:
@@ -300,10 +295,10 @@ class GanSemanticRoleLabeler(Model):
             logits = logits.squeeze(-1)
             print(logits.size(), logits, logits.requires_grad)
             # fake labels 
-            real_labels = mask[:, 0].detach().clone().fill_(0).float()
+            real_labels = mask[:, 0].clone().fill_(0).float()
             print(real_labels.size(), real_labels, real_labels.requires_grad)
             import sys
-            sys.exit(0)
+            #sys.exit(0)
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:
@@ -322,8 +317,8 @@ class GanSemanticRoleLabeler(Model):
             logits = self.srl_encoder(embedded_input, mask)
             logits = logits.squeeze(-1)
             # fake labels
-            fake_labels = mask[:batch_size, 0].detach().clone().fill_(0).float()
-            real_labels = mask[:batch_size, 0].detach().clone().fill_(1).float()
+            fake_labels = mask[:batch_size, 0].clone().fill_(0).float()
+            real_labels = mask[:batch_size, 0].clone().fill_(1).float()
             dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
                      + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
             output_dict['dis_loss'] = dis_loss / 2 

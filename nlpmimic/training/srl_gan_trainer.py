@@ -278,6 +278,7 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             gen_loss.backward()
             gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
+            logger.info('------------------------optimizing the generator')
            
            
             # update discriminator
@@ -290,6 +291,7 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             dis_loss.backward()
             dis_batch_grad_norm = self._gradient(self.optimizer, False, batch_num_total)
+            logger.info('------------------------optimizing the discriminator')
  
             #cnt += 1
             #if cnt >= 1:
