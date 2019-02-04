@@ -67,12 +67,12 @@ class GanSemanticRoleLabeler(Model):
                             srl_labels: torch.LongTensor) -> torch.Tensor:
         # copy a tensor that does not require gradients
         full_label_mask = length_mask.clone() 
-        # create a reference
+        # create a reference to the noun part
         noun_label_mask = full_label_mask[batch_size:, :] 
         # should assert equal size
-        noun_label_mask[srl_labels != 0] = 1 
+        noun_label_mask[srl_labels == 0] = 0 
         # element-wise mulplication
-        full_label_mask = full_label_mask * length_mask 
+        #full_label_mask = full_label_mask * length_mask 
         # new mask for srl feature extraction
         return full_label_mask
 
@@ -287,19 +287,23 @@ class GanSemanticRoleLabeler(Model):
                          embedded_noun_lemmas]
         embedded_noun = torch.cat(noun_features, -1)
         
-        
+        """ 
         for k, v in input_dict.items():
             print('\n{} = {}'.format(k, v.size()) )
 
         print(embedded_noun.size()) 
-
-
+        """
+        
         if retrive_generator_loss:
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
             logits = logits.squeeze(-1)
+            print(logits.size(), logits, logits.requires_grad)
             # fake labels 
             real_labels = mask[:, 0].detach().clone().fill_(0).float()
+            print(real_labels.size(), real_labels, real_labels.requires_grad)
+            import sys
+            sys.exit(0)
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:

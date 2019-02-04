@@ -61,9 +61,8 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
-      "embedding_dim": 4,
-      "num_filters": 50,
-      "output_dim": 1
+      "embedding_dim": 6,
+      "projected_dim": 4
     },
     "initializer": [
       [
@@ -78,16 +77,16 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 3 
+    "batch_size": 2 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 1,
+    "num_epochs": 10,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 3,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95
