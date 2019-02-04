@@ -60,6 +60,21 @@ class GanSemanticRoleLabeler(Model):
                                "text embedding dim + verb indicator embedding dim",
                                "seq_encoder input dim")
         initializer(self)
+    
+    def _create_label_masks(self, 
+                            batch_size: int,
+                            length_mask: torch.LongTensor,  
+                            srl_labels: torch.LongTensor) -> torch.Tensor:
+        # copy a tensor that does not require gradients
+        full_label_mask = length_mask.clone() 
+        # create a reference
+        noun_label_mask = full_label_mask[batch_size:, :] 
+        # should assert equal size
+        noun_label_mask[srl_labels != 0] = 1 
+        # element-wise mulplication
+        full_label_mask = full_label_mask * length_mask 
+        # new mask for srl feature extraction
+        return full_label_mask
 
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
@@ -82,12 +97,22 @@ class GanSemanticRoleLabeler(Model):
         neural network.
         """
         embedded_token_input = self.embedding_dropout(self.token_embedder(tokens))
-        batch_size, _, _ = embedded_token_input.size() 
+        batch_size, length, _ = embedded_token_input.size() 
         mask = get_text_field_mask(tokens)
         
         if self.training: # FIX ME: avoid unnecessary embedding look up when retriving generator loss
             embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
-            embedded_predicate_input = self.embedding_dropout(self.predicate_embedder(predicates))
+            embedded_predicates = self.predicate_embedder(predicates)
+            # (batch_size, length, dim) -> (batch_size, dim, length)
+            embedded_predicates = torch.transpose(embedded_predicates, 1, 2)
+            # (batch_size, length, 1)
+            pis = torch.unsqueeze(predicate_indicators.float(), -1) 
+            # (batch_size, dim, 1); select the predicate embedding
+            embedded_predicates = torch.bmm(embedded_predicates, pis)
+            # (batch_size, length, dim); `expand` avoid data copy, unlike `repeat`
+            embedded_predicates = embedded_predicates.expand(-1, -1, length).transpose(1, 2)
+            # apply dropout to predicate embeddings
+            embedded_predicate_input = self.embedding_dropout(embedded_predicates)
             
             batch_size = batch_size // 2
             
@@ -139,6 +164,16 @@ class GanSemanticRoleLabeler(Model):
         
         if self.training:
             noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+            label_masks = self._create_label_masks(batch_size, mask, noun_labels) 
+
+            print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
+            print('mask: ', mask, mask.requires_grad)
+            print('used_mask ', used_mask, used_mask.requires_grad)
+            print('label_masks ', label_masks, label_masks.requires_grad)
+
+            #import sys
+            #sys.exit(0)
+            
             embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
             
@@ -151,7 +186,7 @@ class GanSemanticRoleLabeler(Model):
                               'n_embedded_predicates': embedded_noun_predicates,
                               'n_embedded_labels': embedded_noun_labels}
 
-            self._gan_loss(gan_loss_input, mask, output_dict, retrive_generator_loss)
+            self._gan_loss(gan_loss_input, label_masks, output_dict, retrive_generator_loss)
             
             # assumming we can access gold labels for nominal part
             if reconstruction_loss:
@@ -246,8 +281,19 @@ class GanSemanticRoleLabeler(Model):
         embedded_noun_labels = input_dict['n_embedded_labels']
         
         batch_size = embedded_noun_tokens.size(0)
-        embedded_noun = torch.cat([embedded_noun_predicates, embedded_noun_labels], -1)
         
+        noun_features = [embedded_noun_predicates, 
+                         embedded_noun_labels, 
+                         embedded_noun_lemmas]
+        embedded_noun = torch.cat(noun_features, -1)
+        
+        
+        for k, v in input_dict.items():
+            print('\n{} = {}'.format(k, v.size()) )
+
+        print(embedded_noun.size()) 
+
+
         if retrive_generator_loss:
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
@@ -262,7 +308,11 @@ class GanSemanticRoleLabeler(Model):
             embedded_verb_predicates = input_dict['v_embedded_predicates']
             embedded_verb_labels = input_dict['v_embedded_labels']
             
-            embedded_verb = torch.cat([embedded_verb_predicates, embedded_verb_labels], -1)
+            verb_features = [embedded_verb_predicates,
+                             embedded_verb_labels,
+                             embedded_verb_lemmas]
+
+            embedded_verb = torch.cat(verb_features, -1)
             embedded_input = torch.cat([embedded_verb, embedded_noun], 0)
             
             logits = self.srl_encoder(embedded_input, mask)
@@ -283,7 +333,8 @@ class GanSemanticRoleLabeler(Model):
             logits.unsqueeze(0)
         _, max_likelihood_sequence = torch.max(logits, -1)
         for i, length in enumerate(sequence_lengths):
-            max_likelihood_sequence[i, length:] = 0 # FIX ME: assumming 0 as empty label
+            # FIX ME: assumming 0 as empty label
+            max_likelihood_sequence[i, length:] = 0 
         return max_likelihood_sequence
         
         """
@@ -308,10 +359,8 @@ class GanSemanticRoleLabeler(Model):
             # Return an empty dictionary if ignoring the
             # span metric
             return {}
-
         else:
             metric_dict = self.span_metric.get_metric(reset=reset)
-
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
             return {x: y for x, y in metric_dict.items() if "overall" in x}

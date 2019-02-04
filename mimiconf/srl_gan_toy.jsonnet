@@ -78,7 +78,7 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 2 
+    "batch_size": 1 
   },
   "trainer": {
     "type": "srl_gan",
