@@ -61,12 +61,6 @@ class GanSemanticRoleLabeler(Model):
                                "seq_encoder input dim")
         initializer(self)
     
-    def _create_label_masks(self, 
-                            length_mask: torch.LongTensor,  
-                            predicted_srl_labels: torch.LongTensor) -> torch.Tensor:
-        # copy a tensor that does not require gradients
-        return full_label_mask
-
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
                 lemmas: Dict[str, torch.LongTensor],
@@ -159,13 +153,13 @@ class GanSemanticRoleLabeler(Model):
             # srl label masks 
             full_label_masks = mask.clone()
             full_label_masks[predicted_labels == 0] = 0
-
+            """
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
             print('srl_frames: ', srl_frames, srl_frames.requires_grad)
             print('mask: ', mask, mask.requires_grad)
             print('used_mask ', used_mask, used_mask.requires_grad)
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
-
+            """
             #import sys
             #sys.exit(0)
             
@@ -293,12 +287,9 @@ class GanSemanticRoleLabeler(Model):
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
             logits = logits.squeeze(-1)
-            print(logits.size(), logits, logits.requires_grad)
+            logits = F.sigmoid(logits)
             # fake labels 
             real_labels = mask[:, 0].clone().fill_(0).float()
-            print(real_labels.size(), real_labels, real_labels.requires_grad)
-            import sys
-            #sys.exit(0)
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:
@@ -316,6 +307,7 @@ class GanSemanticRoleLabeler(Model):
             
             logits = self.srl_encoder(embedded_input, mask)
             logits = logits.squeeze(-1)
+            logits = F.sigmoid(logits)
             # fake labels
             fake_labels = mask[:batch_size, 0].clone().fill_(0).float()
             real_labels = mask[:batch_size, 0].clone().fill_(1).float()

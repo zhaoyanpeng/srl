@@ -266,7 +266,7 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
-            print(batch)
+            #print(batch)
 
             # update generator
             self.optimizer.zero_grad()
@@ -278,7 +278,8 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             gen_loss.backward()
             gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
-            logger.info('------------------------optimizing the generator')
+            #logger.info('')
+            #logger.info('------------------------optimizing the generator')
            
            
             # update discriminator
@@ -291,7 +292,7 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             dis_loss.backward()
             dis_batch_grad_norm = self._gradient(self.optimizer, False, batch_num_total)
-            logger.info('------------------------optimizing the discriminator')
+            #logger.info('------------------------optimizing the discriminator')
  
             #cnt += 1
             #if cnt >= 1:
@@ -418,14 +419,8 @@ class GanSrlTrainer(Trainer):
         epochs_trained = 0
         training_start_time = time.time()
         
-        cnt = 0
         for epoch in range(epoch_counter, self._num_epochs):
             epoch_start_time = time.time()
-            
-            cnt += 1
-            #if cnt >= 2:
-            #    import sys
-            #    sys.exit(0)
             
             train_metrics = self._train_epoch(epoch)
 
