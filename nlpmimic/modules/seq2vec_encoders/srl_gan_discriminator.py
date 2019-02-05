@@ -58,9 +58,9 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         logits : logits which are further input to a loss function .
         """
         # reset masks with 1. if there are NOT any srl labels 
-        divider = torch.sum(mask, -1).float()
-        zero_indexes = divider == 0.
-        mask[zero_indexes, :] = 1.
+        #divider = torch.sum(mask, -1).float()
+        #zero_indexes = divider == 0.
+        #mask[zero_indexes, :] = 1.
         
         _, length, _ = tokens.size()
         tokens = tokens * mask.unsqueeze(-1).float() 
