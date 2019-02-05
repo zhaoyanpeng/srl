@@ -87,6 +87,8 @@
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
+    "dis_skip_nepoch": 1,
+    "gen_pretraining": -1,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

@@ -186,6 +186,8 @@ class GanSemanticRoleLabeler(Model):
                                                               gold_labels,
                                                               used_mask,
                                                               label_smoothing=self._label_smoothing)
+                if not self.ignore_span_metric:
+                    self.span_metric(class_probabilities, gold_labels, used_mask)
                 output_dict["rec_loss"] = rec_loss
             
             if metadata is not None:

@@ -55,6 +55,8 @@ class GanSrlTrainer(Trainer):
                  validation_iterator: DataIterator = None,
                  shuffle: bool = True,
                  num_epochs: int = 20,
+                 dis_skip_nepoch: int = -1,
+                 gen_pretraining: int = -1,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -112,6 +114,9 @@ class GanSrlTrainer(Trainer):
         # Enable activation logging.
         if histogram_interval is not None:
             self._tensorboard.enable_activation_logging(self.model)
+        
+        self.dis_skip_nepoch = dis_skip_nepoch
+        self.gen_pretraining = gen_pretraining
 
     def _sample(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
         instances = ensure_list(instances)
@@ -270,38 +275,58 @@ class GanSrlTrainer(Trainer):
 
             # update generator
             self.optimizer.zero_grad()
-            gen_loss, _ = self.batch_loss(batch, 
+            gen_loss, rec_loss = self.batch_loss(batch, 
                                       for_training=True, 
                                       retrive_generator_loss=True,
-                                      reconstruction_loss=False)
+                                      reconstruction_loss=True)
             if torch.isnan(gen_loss):
                 raise ValueError("nan loss encountered")
-            gen_loss.backward()
+            if torch.isnan(rec_loss):
+                raise ValueError("nan loss encountered")
+            
+            # different methods of pre-training the generator, this will be switched 
+            # to the unsupervised training when we start training the discriminator
+            if self.gen_pretraining > 0:       # semi-supervised 
+                gen_loss = gen_loss + rec_loss
+                gen_loss.backward()
+            elif self.gen_pretraining == 0:    # supervised
+                rec_loss.backward()            
+            else:                              # unsupervised
+                gen_loss.backward()
+
             gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
+            
+            train_loss += gen_loss.item()
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
            
-           
-            # update discriminator
-            self.optimizer_dis.zero_grad()
-            dis_loss, rec_loss = self.batch_loss(batch, 
-                                             for_training=True, 
-                                             retrive_generator_loss=False,
-                                             reconstruction_loss=True)
-            if torch.isnan(dis_loss):
-                raise ValueError("nan loss encountered")
-            dis_loss.backward()
-            dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
-            #logger.info('------------------------optimizing the discriminator')
- 
+            if epoch >= self.dis_skip_nepoch: # do not optimize the discriminator
+                # reset the training of the generator to the unsupervised training
+                self.gen_pretraining = -1
+
+                # update discriminator
+                self.optimizer_dis.zero_grad()
+                dis_loss, rec_loss = self.batch_loss(batch, 
+                                                 for_training=True, 
+                                                 retrive_generator_loss=False,
+                                                 reconstruction_loss=True)
+                if torch.isnan(dis_loss):
+                    raise ValueError("nan loss encountered")
+                if torch.isnan(rec_loss):
+                    raise ValueError("nan loss encountered")
+
+                dis_loss.backward()
+                dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
+                
+                train_loss += dis_loss.item()
+                #logger.info('------------------------optimizing the discriminator')
+            else:
+                dis_batch_grad_norm = 0.
+                pass 
             #cnt += 1
             #if cnt >= 1:
             #    import sys
             #    sys.exit(0)
-            
-            #train_loss += loss.item()
-            train_loss += gen_loss.item()
-            train_loss += dis_loss.item()
 
             reconstruction_loss += rec_loss.item() 
 
@@ -318,10 +343,12 @@ class GanSrlTrainer(Trainer):
             if self._tensorboard.should_log_this_batch():
                 self._tensorboard.log_parameter_and_gradient_statistics(self.model, 
                                                                         gen_batch_grad_norm,
-                                                                        self.parameter_names)
+                                                                        self.parameter_names,
+                                                                        model_signature = 'gen_')
                 self._tensorboard.log_parameter_and_gradient_statistics(self.model, 
                                                                         dis_batch_grad_norm,
-                                                                        self.dis_param_names)
+                                                                        self.dis_param_names,
+                                                                        model_signature = 'dis_')
                 self._tensorboard.log_learning_rates(self.model, self.optimizer)
                 self._tensorboard.log_learning_rates(self.model, self.optimizer_dis)
 
@@ -563,6 +590,10 @@ class GanSrlTrainer(Trainer):
         grad_norm = params.pop_float("grad_norm", None)
         grad_clipping = params.pop_float("grad_clipping", None)
         lr_scheduler_params = params.pop("learning_rate_scheduler", None)
+        
+        # customized settings for training
+        dis_skip_nepoch = params.pop("dis_skip_nepoch", -1)
+        gen_pretraining = params.pop("gen_pretraining", -1)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -627,6 +658,8 @@ class GanSrlTrainer(Trainer):
                    validation_iterator=validation_iterator,
                    shuffle=shuffle,
                    num_epochs=num_epochs,
+                   dis_skip_nepoch = dis_skip_nepoch,
+                   gen_pretraining = gen_pretraining,
                    serialization_dir=serialization_dir,
                    cuda_device=cuda_device,
                    grad_norm=grad_norm,

@@ -89,7 +89,7 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 2 
+    "batch_size": 45 
   },
   "trainer": {
     "type": "srl_gan",
@@ -99,6 +99,8 @@
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
+    "dis_skip_nepoch": 2,
+    "gen_pretraining": 0,  
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

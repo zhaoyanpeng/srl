@@ -37,7 +37,8 @@ class GanSrlTensorboardWriter(TensorboardWriter):
     def log_parameter_and_gradient_statistics(self, # pylint: disable=invalid-name
                                               model: Model,
                                               batch_grad_norm: float,
-                                              param_signatures: List[str]) -> None:
+                                              param_signatures: List[str],
+                                              model_signature: str = '') -> None:
         """
         Send the mean and std of all parameters and gradients to tensorboard, as well
         as logging the average gradient norm.
@@ -66,7 +67,7 @@ class GanSrlTensorboardWriter(TensorboardWriter):
                         logger.info("No gradient for %s, skipping tensorboard logging.", name)
             # norm of gradients
             if batch_grad_norm is not None:
-                name = model_signatuer + "gradient_norm"
+                name = model_signature + "gradient_norm"
                 self.add_train_scalar(name, batch_grad_norm)
 
 
