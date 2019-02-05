@@ -320,12 +320,28 @@ class GanSemanticRoleLabeler(Model):
         """ Sub-procedure for decoding. 
         """
         sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
-        if logits.dim() < 3:
+        if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
         _, max_likelihood_sequence = torch.max(logits, -1)
+        
+        print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
+
         for i, length in enumerate(sequence_lengths):
             # FIX ME: assumming 0 as empty label
+            labels = max_likelihood_sequence[i, :length]
+            nlabel = torch.sum(labels != 0)
+            n = 0
+            while nlabel == 0:
+                labels = torch.multinomial(logits[i], 1).squeeze(-1)[:length]
+                nlabel = torch.sum(labels != 0)
+                n += 1
+            print('--sample {: >{}} times'.format(n, 3))
+            max_likelihood_sequence[i, :length] = labels 
             max_likelihood_sequence[i, length:] = 0 
+        
+        print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
+        import sys
+        sys.exit(0)
         return max_likelihood_sequence
         
         """
