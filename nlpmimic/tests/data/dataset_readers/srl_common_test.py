@@ -6,7 +6,7 @@ from nlpmimic.common.testing import NlpMimicTestCase
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009DatasetReader
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
-class TestConll2003Reader():
+class TestConll2009Reader():
     @pytest.mark.parametrize("lazy", (True,))
     #@pytest.mark.parametrize("feature_labels", [['pos'], ['dep']])
     #def test_read_from_file(self, lazy, feature_labels):
@@ -14,7 +14,7 @@ class TestConll2003Reader():
         conll_reader = Conll2009DatasetReader(lazy=lazy, 
                                               feature_labels=['pos', 'dep'], 
                                               move_preposition_head=True,
-                                              allow_null_predicate = True)
+                                              allow_null_predicate = False)
         print('\n')
         print(NlpMimicTestCase.PROJECT_ROOT)
         print(NlpMimicTestCase.MODULE_ROOT)
@@ -22,7 +22,9 @@ class TestConll2003Reader():
         print(NlpMimicTestCase.TESTS_ROOT)
         print(NlpMimicTestCase.FIXTURES_ROOT)
         
-        data_file = str(NlpMimicTestCase.FIXTURES_ROOT / 'data' / 'trial.bit')
+        #data_file = str(NlpMimicTestCase.FIXTURES_ROOT / 'data' / 'trial.bit')
+        FIXTURES_ROOT = '/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic/nlpmimic/tests/fixtures'
+        data_file = FIXTURES_ROOT + '/data' + '/trial.bit'
         instances = conll_reader.read(data_file)
         instances = ensure_list(instances)
         

@@ -10,7 +10,7 @@
 8   ,          ,          ,          ,    ,    _  _  3   3   P      P      _  _             _   _   _   _   
 9   but        but        but        CC   CC   _  _  3   3   COORD  COORD  _  _             _   _   _   _   
 10  energy     energy     energy     NN   NN   _  _  11  11  NMOD   NMOD   _  _             _   A1  _   _   
-11  costs      costs      costs      NNS  NNS  _  _  12  12  SBJ    SBJ    Y  cost.01       _   _   A1  _   
+11  costs      costs      costs      NNS  NNS  _  _  12  12  SBJ    SBJ    Y  cost.01       _   _   _   _   
 12  jumped     jump       jump       VBD  VBD  _  _  9   9   CONJ   CONJ   _  _             _   _   _   _   
 13  as         as         as         RB   RB   _  _  16  14  NMOD   DEP    _  _             _   _   _   _   
 14  much       much       much       JJ   JJ   _  _  16  17  NMOD   NMOD   _  _             _   _   _   _   

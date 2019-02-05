@@ -291,6 +291,10 @@ class Conll2009DatasetReader(DatasetReader):
                                             self.instance_type)
             else:
                 for (predicate_index, predicate, labels) in sentence.srl_frames:
+                    srl_labels = list(set(labels))
+                    if not self.allow_null_predicate and \
+                        len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
+                        continue
                     predicate_indicators = [0 for _ in labels]
                     predicate_indicators[predicate_index] = 1
                     predicate_sense = sentence.predicate_senses[predicate_index]

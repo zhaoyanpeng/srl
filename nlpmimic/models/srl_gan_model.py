@@ -312,8 +312,6 @@ class GanSemanticRoleLabeler(Model):
             fake_labels = mask[:batch_size, 0].clone().fill_(0).float()
             real_labels = mask[:batch_size, 0].clone().fill_(1).float()
             
-            print(logits.size(), logits)
-            print(real_labels.size(), real_labels)
             dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
                      + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
             output_dict['dis_loss'] = dis_loss / 2 
