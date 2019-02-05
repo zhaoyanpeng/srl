@@ -115,7 +115,7 @@ class GanSrlTrainer(Trainer):
 
     def _sample(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
         instances = ensure_list(instances)
-        random.seed(0)
+        #random.seed(0)
         samples = random.sample(population=instances, k = batch_size) 
         return samples
     
@@ -266,7 +266,7 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
-            #print(batch)
+            print(batch)
 
             # update generator
             self.optimizer.zero_grad()

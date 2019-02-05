@@ -287,7 +287,7 @@ class GanSemanticRoleLabeler(Model):
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
             logits = logits.squeeze(-1)
-            logits = F.sigmoid(logits)
+            logits = torch.sigmoid(logits)
             # fake labels 
             real_labels = mask[:, 0].clone().fill_(0).float()
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
@@ -307,10 +307,13 @@ class GanSemanticRoleLabeler(Model):
             
             logits = self.srl_encoder(embedded_input, mask)
             logits = logits.squeeze(-1)
-            logits = F.sigmoid(logits)
+            logits = torch.sigmoid(logits)
             # fake labels
             fake_labels = mask[:batch_size, 0].clone().fill_(0).float()
             real_labels = mask[:batch_size, 0].clone().fill_(1).float()
+            
+            print(logits.size(), logits)
+            print(real_labels.size(), real_labels)
             dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
                      + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
             output_dict['dis_loss'] = dis_loss / 2 
