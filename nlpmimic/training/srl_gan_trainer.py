@@ -287,11 +287,13 @@ class GanSrlTrainer(Trainer):
             # different methods of pre-training the generator, this will be switched 
             # to the unsupervised training when we start training the discriminator
             if self.gen_pretraining > 0:       # semi-supervised 
+                #logger.info('------supervised')
                 gen_loss = gen_loss + rec_loss
                 gen_loss.backward()
             elif self.gen_pretraining == 0:    # supervised
                 rec_loss.backward()            
             else:                              # unsupervised
+                #logger.info('------un-supervised')
                 gen_loss.backward()
 
             gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
@@ -318,10 +320,13 @@ class GanSrlTrainer(Trainer):
                 dis_loss.backward()
                 dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
                 
+                #logger.info('------discriminator')
+                
                 train_loss += dis_loss.item()
                 #logger.info('------------------------optimizing the discriminator')
             else:
-                dis_batch_grad_norm = 0.
+                dis_batch_grad_norm = None 
+                #logger.info('------skip discriminator')
                 pass 
             #cnt += 1
             #if cnt >= 1:

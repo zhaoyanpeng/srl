@@ -6,6 +6,7 @@ import logging
 
 from allennlp.common.checks import ConfigurationError, check_for_data_path, check_for_gpu
 from allennlp.common.params import Params
+from allennlp.training.util import sparse_clip_norm
 from allennlp.data.dataset_readers import DatasetReader
 from allennlp.data import Instance
 from allennlp.models.model import Model
