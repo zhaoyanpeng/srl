@@ -271,7 +271,7 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
-            #print(batch)
+            print(batch)
 
             # update generator
             self.optimizer.zero_grad()
@@ -285,7 +285,7 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             
             # different methods of pre-training the generator, this will be switched 
-            # to the unsupervised training when we start training the discriminator
+            # to the unsupervised training as soon as we start training the discriminator
             if self.gen_pretraining > 0:       # semi-supervised 
                 #logger.info('------supervised')
                 gen_loss = gen_loss + rec_loss

@@ -22,6 +22,7 @@
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
     "type": "srl_gan",
+    "embedding_dropout": 0.3,
     "token_embedder": {
       "token_embedders": {
         //"tokens": {
@@ -100,13 +101,12 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 45 
+    "batch_size": 128 
   },
   "trainer": {
     "type": "srl_gan",
     "num_epochs": 500,
     "grad_norm": 5.0,
-    //"grad_clipping": 1.0,
     "patience": 30,
     "shuffle": true,
     "num_serialized_models_to_keep": 10,

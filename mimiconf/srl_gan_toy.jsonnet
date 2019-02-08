@@ -68,9 +68,25 @@
       [
         "tag_projection_layer.*weight",
         {
-          "type": "orthogonal"
+          //"type": "orthogonal"
+          //"type": "xavier_uniform"
+          "type": "normal"
+          //"type": "uniform"
+          //"type": "xavier_normal"
         }
-      ]
+      ],
+      //[
+        //"forward_layer.*weight",
+        //{
+          //"type": "xavier_uniform"
+        //}
+      //],
+      //[
+        //"backward_layer.*weight",
+        //{
+          //"type": "xavier_uniform"
+        //}
+      //]
     ],
     "binary_feature_dim": 2 
   },

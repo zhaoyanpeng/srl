@@ -58,11 +58,12 @@ class TrainerPieces(NamedTuple):
                      if key in datasets_for_vocab_creation)
             )
 
-        """ 
+         
         print(vocab._index_to_token['lemmas'])
         print(vocab._index_to_token['tokens'])
         print(vocab._index_to_token['srl_tags'])
         print(vocab._index_to_token['predicates'])
+        """
         import sys
         sys.exit(0)
         """

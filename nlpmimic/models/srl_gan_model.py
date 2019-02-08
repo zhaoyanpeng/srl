@@ -160,8 +160,6 @@ class GanSemanticRoleLabeler(Model):
             print('used_mask ', used_mask, used_mask.requires_grad)
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
             """
-            #import sys
-            #sys.exit(0)
             
             embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
@@ -177,6 +175,11 @@ class GanSemanticRoleLabeler(Model):
 
             self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss)
             
+            print('\nlogits:\n{}'.format(logits))
+            print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
+            import sys
+            sys.exit(0)
+
             # assumming we can access gold labels for nominal part
             if reconstruction_loss:
                 if srl_frames is None:
@@ -327,7 +330,7 @@ class GanSemanticRoleLabeler(Model):
             logits.unsqueeze(0)
         _, max_likelihood_sequence = torch.max(logits, -1)
         
-        #print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
+        print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
 
         for i, length in enumerate(sequence_lengths):
             # FIX ME: assumming 0 as empty label
@@ -342,7 +345,7 @@ class GanSemanticRoleLabeler(Model):
             max_likelihood_sequence[i, :length] = labels 
             max_likelihood_sequence[i, length:] = 0 
         
-        #print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
+        print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
         #import sys
         #sys.exit(0)
         return max_likelihood_sequence
