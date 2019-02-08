@@ -27,12 +27,15 @@ class GanSemanticRoleLabeler(Model):
                  seq_encoder: Seq2SeqEncoder,
                  srl_encoder: Seq2VecEncoder,
                  binary_feature_dim: int,
+                 temperature: float = 1.0,
                  embedding_dropout: float = 0.0,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
                  ignore_span_metric: bool = False) -> None:
         super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
+
+        self.minimum = 1e-20
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
@@ -47,6 +50,8 @@ class GanSemanticRoleLabeler(Model):
 
         self.seq_encoder = seq_encoder
         self.srl_encoder = srl_encoder
+        self.temperature = torch.nn.Parameter(torch.tensor(temperature)) 
+
         # There are exactly 2 binary features for the verb predicate embedding.
         self.binary_feature_embedding = Embedding(2, binary_feature_dim)
         self.tag_projection_layer = TimeDistributed(Linear(self.seq_encoder.get_output_dim(),
@@ -148,7 +153,9 @@ class GanSemanticRoleLabeler(Model):
         
         
         if self.training:
-            noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+            noun_labels, embedded_noun_labels = self._argmax_logits(class_probabilities, used_mask)
+            #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
             # srl label masks 
             full_label_masks = mask.clone()
@@ -161,7 +168,7 @@ class GanSemanticRoleLabeler(Model):
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
             """
             
-            embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
+            #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
             
             gan_loss_input = {'v_embedded_tokens': embedded_verb_tokens,
@@ -321,7 +328,36 @@ class GanSemanticRoleLabeler(Model):
                      + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
             output_dict['dis_loss'] = dis_loss / 2 
         return None 
+       
+    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
+        if logits.dim() < 3: # fake batch size
+            logits.unsqueeze(0)
         
+        batch_size, sequence_length, _ = logits.size()
+        class_probs = F.gumbel_softmax(
+            torch.log(logits.view(-1, self.num_classes) + self.minimum), 
+            tau = self.temperature,
+            hard = True).view([batch_size, sequence_length, self.num_classes]) 
+        
+        print('\ngumbel_softmax:\n{}'.format(class_probs))
+        print('\ngumbel_size: {}\n'.format(class_probs.size()))
+        
+        print(self.label_embedder.weight)
+        
+        embedded_labels = torch.matmul(class_probs, self.label_embedder.weight) 
+        _, max_likelihood_sequence = torch.max(class_probs, -1)
+        for i, length in enumerate(sequence_lengths):
+            max_likelihood_sequence[i, length:] = 0
+
+        #print('\nembedded_labels: {}\n'.format(embedded_labels))
+        print('\nembedded_size: {}\n'.format(embedded_labels.size()))
+        print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
+        import sys
+        sys.exit(0)
+        return max_likelihood_sequence, embedded_labels 
+
+
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """ Sub-procedure for decoding. 
         """
