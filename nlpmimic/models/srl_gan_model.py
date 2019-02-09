@@ -301,7 +301,7 @@ class GanSemanticRoleLabeler(Model):
             logits = logits.squeeze(-1)
             logits = torch.sigmoid(logits)
             # fake labels 
-            real_labels = mask[:, 0].clone().fill_(0).float()
+            real_labels = mask[:, 0].clone().fill_(1).float()
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:
