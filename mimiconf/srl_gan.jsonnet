@@ -86,7 +86,8 @@
         }
       ]
     ],
-    "binary_feature_dim": 100 
+    "binary_feature_dim": 100, 
+    "temperature": 0.5
   },
   "iterator": {
     "type": "bucket",
@@ -102,9 +103,9 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
-    "dis_skip_nepoch": 100,
-    "gen_pretraining": 0,  
+    "cuda_device": 0,
+    "dis_skip_nepoch": 1,
+    "gen_pretraining": -1,  
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

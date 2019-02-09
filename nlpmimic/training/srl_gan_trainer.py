@@ -271,7 +271,7 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
-            print(batch)
+            #print(batch)
 
             # update generator
             self.optimizer.zero_grad()

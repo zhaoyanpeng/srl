@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_gan_tune"
+model_name="srl_gan_stsf"
 param_name="srl_gan.jsonnet"
 model_path=$droot/model
 

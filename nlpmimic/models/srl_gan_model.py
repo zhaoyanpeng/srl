@@ -182,10 +182,10 @@ class GanSemanticRoleLabeler(Model):
 
             self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss)
             
-            print('\nlogits:\n{}'.format(logits))
-            print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
-            import sys
-            sys.exit(0)
+            #print('\nlogits:\n{}'.format(logits))
+            #print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
+            #import sys
+            #sys.exit(0)
 
             # assumming we can access gold labels for nominal part
             if reconstruction_loss:
@@ -340,10 +340,10 @@ class GanSemanticRoleLabeler(Model):
             tau = self.temperature,
             hard = True).view([batch_size, sequence_length, self.num_classes]) 
         
-        print('\ngumbel_softmax:\n{}'.format(class_probs))
-        print('\ngumbel_size: {}\n'.format(class_probs.size()))
+        #print('\ngumbel_softmax:\n{}'.format(class_probs))
+        #print('\ngumbel_size: {}\n'.format(class_probs.size()))
         
-        print(self.label_embedder.weight)
+        #print(self.label_embedder.weight)
         
         embedded_labels = torch.matmul(class_probs, self.label_embedder.weight) 
         _, max_likelihood_sequence = torch.max(class_probs, -1)
@@ -351,10 +351,10 @@ class GanSemanticRoleLabeler(Model):
             max_likelihood_sequence[i, length:] = 0
 
         #print('\nembedded_labels: {}\n'.format(embedded_labels))
-        print('\nembedded_size: {}\n'.format(embedded_labels.size()))
-        print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
-        import sys
-        sys.exit(0)
+        #print('\nembedded_size: {}\n'.format(embedded_labels.size()))
+        #print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
+        #import sys
+        #sys.exit(0)
         return max_likelihood_sequence, embedded_labels 
 
 
@@ -366,7 +366,7 @@ class GanSemanticRoleLabeler(Model):
             logits.unsqueeze(0)
         _, max_likelihood_sequence = torch.max(logits, -1)
         
-        print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
+        #print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
 
         for i, length in enumerate(sequence_lengths):
             # FIX ME: assumming 0 as empty label
@@ -381,7 +381,7 @@ class GanSemanticRoleLabeler(Model):
             max_likelihood_sequence[i, :length] = labels 
             max_likelihood_sequence[i, length:] = 0 
         
-        print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
+        #print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
         #import sys
         #sys.exit(0)
         return max_likelihood_sequence
