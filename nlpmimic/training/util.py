@@ -100,6 +100,8 @@ def rescale_gradients(model: Model,
 def get_metrics(model: Model, 
                 total_loss: float, 
                 num_batches: int, 
+                generator_loss: float = None,
+                discriminator_loss: float = None,
                 reconstruction_loss: float = None, 
                 reset: bool = False) -> Dict[str, float]:
     """
@@ -111,6 +113,10 @@ def get_metrics(model: Model,
     metrics["loss"] = float(total_loss / num_batches) if num_batches > 0 else 0.0
     if reconstruction_loss is not None:
         metrics["rec_loss"] = float(reconstruction_loss / num_batches) if num_batches > 0 else 0.0
-    else:
-        metrics["rec_loss"] = float('inf') 
+    
+    if generator_loss is not None:
+        metrics["g_loss"] = generator_loss
+    
+    if discriminator_loss is not None:
+        metrics["d_loss"] = discriminator_loss 
     return metrics

@@ -15,9 +15,11 @@
   "reader_mode": "srl_gan",
   "dis_param_name": "srl_encoder",
   
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
+  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.picked",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.picked",
+  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
@@ -78,16 +80,16 @@
       "embedding_dim": 500,
       "projected_dim": 200 
     },
-    "initializer": [
-      [
-        "tag_projection_layer.*weight",
-        {
-          "type": "orthogonal"
-        }
-      ]
-    ],
+    //"initializer": [
+    //  [
+    //    "tag_projection_layer.*weight",
+    //    {
+    //      "type": "orthogonal"
+    //    }
+    //  ]
+    //],
     "binary_feature_dim": 100, 
-    "temperature": 0.5
+    "temperature": 0.3
   },
   "iterator": {
     "type": "bucket",
@@ -103,9 +105,11 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 1,
     "dis_skip_nepoch": 1,
     "gen_pretraining": -1,  
+    "dis_loss_scalar": 0.1,
+    "gen_loss_scalar": 5.0,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

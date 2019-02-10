@@ -301,7 +301,7 @@ class GanSemanticRoleLabeler(Model):
             logits = logits.squeeze(-1)
             logits = torch.sigmoid(logits)
             # fake labels 
-            real_labels = mask[:, 0].clone().fill_(1).float()
+            real_labels = mask[:, 0].detach().clone().fill_(1).float()
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:
@@ -321,8 +321,8 @@ class GanSemanticRoleLabeler(Model):
             logits = logits.squeeze(-1)
             logits = torch.sigmoid(logits)
             # fake labels
-            fake_labels = mask[:batch_size, 0].clone().fill_(0).float()
-            real_labels = mask[:batch_size, 0].clone().fill_(1).float()
+            fake_labels = mask[:batch_size, 0].detach().clone().fill_(0).float()
+            real_labels = mask[:batch_size, 0].detach().clone().fill_(1).float()
             
             dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
                      + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
@@ -412,5 +412,5 @@ class GanSemanticRoleLabeler(Model):
             metric_dict = self.span_metric.get_metric(reset=reset)
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
-            return {x: y for x, y in metric_dict.items() if "overall" in x}
+            return {x: y for x, y in metric_dict.items() if "f1-measure-overall" in x}
 

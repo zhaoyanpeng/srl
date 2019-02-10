@@ -57,6 +57,8 @@ class GanSrlTrainer(Trainer):
                  num_epochs: int = 20,
                  dis_skip_nepoch: int = -1,
                  gen_pretraining: int = -1,
+                 dis_loss_scalar: float = 1.0,
+                 gen_loss_scalar: float = 1.0,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -99,6 +101,8 @@ class GanSrlTrainer(Trainer):
         self.optimizer_dis = optimizer_dis
         self.parameter_names = parameter_names
         self.dis_param_names = dis_param_names
+        self.gen_loss_scalar = gen_loss_scalar
+        self.dis_loss_scalar = dis_loss_scalar
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
@@ -272,6 +276,7 @@ class GanSrlTrainer(Trainer):
             batch_num_total = self._batch_num_total
             
             #print(batch)
+            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
 
             # update generator
             self.optimizer.zero_grad()
@@ -294,15 +299,18 @@ class GanSrlTrainer(Trainer):
                 rec_loss.backward()            
             else:                              # unsupervised
                 #logger.info('------un-supervised')
+                gen_loss *= self.gen_loss_scalar 
                 gen_loss.backward()
-
-            gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
             
+            gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
+
+            g_loss = gen_loss.item() / self.gen_loss_scalar
             train_loss += gen_loss.item()
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
+            print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
-            if epoch >= self.dis_skip_nepoch: # do not optimize the discriminator
+            if epoch >= self.dis_skip_nepoch or g_loss <= 0.1: # do optimize the discriminator
                 # reset the training of the generator to the unsupervised training
                 self.gen_pretraining = -1
 
@@ -316,15 +324,17 @@ class GanSrlTrainer(Trainer):
                     raise ValueError("nan loss encountered")
                 if torch.isnan(rec_loss):
                     raise ValueError("nan loss encountered")
-
+                
+                dis_loss *= self.dis_loss_scalar
                 dis_loss.backward()
                 dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
                 
                 #logger.info('------discriminator')
-                
+                d_loss = dis_loss.item() / self.dis_loss_scalar 
                 train_loss += dis_loss.item()
                 #logger.info('------------------------optimizing the discriminator')
             else:
+                d_loss = None
                 dis_batch_grad_norm = None 
                 #logger.info('------skip discriminator')
                 pass 
@@ -334,12 +344,15 @@ class GanSrlTrainer(Trainer):
             #    sys.exit(0)
 
             reconstruction_loss += rec_loss.item() 
+            print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
 
             # Update the description with the latest metrics
             metrics = mimic_training_util.get_metrics(self.model, 
                                                       train_loss, 
                                                       batches_this_epoch,
-                                                      reconstruction_loss=reconstruction_loss)
+                                                      generator_loss = g_loss,
+                                                      discriminator_loss = d_loss,
+                                                      reconstruction_loss = reconstruction_loss)
             description = training_util.description_from_metrics(metrics)
 
             train_generator_tqdm.set_description(description, refresh=False)
@@ -599,6 +612,8 @@ class GanSrlTrainer(Trainer):
         # customized settings for training
         dis_skip_nepoch = params.pop("dis_skip_nepoch", -1)
         gen_pretraining = params.pop("gen_pretraining", -1)
+        dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
+        gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -665,6 +680,8 @@ class GanSrlTrainer(Trainer):
                    num_epochs=num_epochs,
                    dis_skip_nepoch = dis_skip_nepoch,
                    gen_pretraining = gen_pretraining,
+                   dis_loss_scalar = dis_loss_scalar,
+                   gen_loss_scalar = gen_loss_scalar,
                    serialization_dir=serialization_dir,
                    cuda_device=cuda_device,
                    grad_norm=grad_norm,
