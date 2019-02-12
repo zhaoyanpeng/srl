@@ -160,7 +160,8 @@ class GanSrlTrainer(Trainer):
                    batch: torch.Tensor, 
                    for_training: bool, 
                    retrive_generator_loss: bool,
-                   reconstruction_loss: bool = True) -> torch.Tensor:
+                   reconstruction_loss: bool = True,
+                   only_reconstruction: bool = False) -> torch.Tensor:
         """
         Does a forward pass on the given batch and returns the ``loss`` value in the result.
         If ``for_training`` is `True` also applies regularization penalty.
@@ -172,7 +173,8 @@ class GanSrlTrainer(Trainer):
             batch = nn_util.move_to_device(batch, self._cuda_devices[0])
             output_dict = self.model(**batch, 
                                      retrive_generator_loss=retrive_generator_loss, 
-                                     reconstruction_loss=reconstruction_loss)
+                                     reconstruction_loss=reconstruction_loss,
+                                     only_reconstruction=only_reconstruction)
         try:
             if for_training: # compulsory loss
                 if retrive_generator_loss:
@@ -276,18 +278,19 @@ class GanSrlTrainer(Trainer):
             batch_num_total = self._batch_num_total
             
             #print(batch)
-            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
-
+            
             # update generator
             self.optimizer.zero_grad()
             gen_loss, rec_loss = self.batch_loss(batch, 
                                       for_training=True, 
                                       retrive_generator_loss=True,
-                                      reconstruction_loss=True)
+                                      reconstruction_loss=True,
+                                      only_reconstruction=True)
             if torch.isnan(gen_loss):
                 raise ValueError("nan loss encountered")
             if torch.isnan(rec_loss):
                 raise ValueError("nan loss encountered")
+            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             
             # different methods of pre-training the generator, this will be switched 
             # to the unsupervised training as soon as we start training the discriminator
@@ -310,7 +313,7 @@ class GanSrlTrainer(Trainer):
             #logger.info('------------------------optimizing the generator')
             print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
-            if epoch >= self.dis_skip_nepoch or g_loss <= 0.1: # do optimize the discriminator
+            if epoch >= self.dis_skip_nepoch and g_loss <= 0.3: # do optimize the discriminator
                 # reset the training of the generator to the unsupervised training
                 self.gen_pretraining = -1
 

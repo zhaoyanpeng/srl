@@ -28,6 +28,7 @@ class GanSemanticRoleLabeler(Model):
                  srl_encoder: Seq2VecEncoder,
                  binary_feature_dim: int,
                  temperature: float = 1.0,
+                 fixed_temperature: bool = False,
                  embedding_dropout: float = 0.0,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -36,6 +37,7 @@ class GanSemanticRoleLabeler(Model):
         super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.minimum = 1e-20
+        self.minimum_temperature = 0.001
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
@@ -50,7 +52,7 @@ class GanSemanticRoleLabeler(Model):
 
         self.seq_encoder = seq_encoder
         self.srl_encoder = srl_encoder
-        self.temperature = torch.nn.Parameter(torch.tensor(temperature)) 
+        self.temperature = torch.nn.Parameter(torch.tensor(temperature), requires_grad=fixed_temperature) 
 
         # There are exactly 2 binary features for the verb predicate embedding.
         self.binary_feature_embedding = Embedding(2, binary_feature_dim)
@@ -73,6 +75,7 @@ class GanSemanticRoleLabeler(Model):
                 predicates: torch.LongTensor,
                 retrive_generator_loss: bool = False,
                 reconstruction_loss: bool = False,
+                only_reconstruction: bool = False,
                 srl_frames: torch.LongTensor = None,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
@@ -180,7 +183,7 @@ class GanSemanticRoleLabeler(Model):
                               'n_embedded_predicates': embedded_noun_predicates,
                               'n_embedded_labels': embedded_noun_labels}
 
-            self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss)
+            self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
             
             #print('\nlogits:\n{}'.format(logits))
             #print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
@@ -275,7 +278,16 @@ class GanSemanticRoleLabeler(Model):
                   input_dict: Dict[str, torch.Tensor], 
                   mask: torch.Tensor, 
                   output_dict: Dict[str, Any],
-                  retrive_generator_loss: bool) -> None:
+                  retrive_generator_loss: bool,
+                  return_without_computation: bool = False) -> None:
+        if return_without_computation:
+            default_value = torch.tensor(0.0, dtype=torch.float, device=mask.device)
+            if retrive_generator_loss:
+                output_dict['gen_loss'] = default_value 
+            else:
+                output_dict['dis_loss'] = default_value
+            return None
+
         embedded_noun_tokens = input_dict['n_embedded_tokens']
         embedded_noun_lemmas = input_dict['n_embedded_lemmas']
         embedded_noun_predicates = input_dict['n_embedded_predicates']
@@ -335,6 +347,9 @@ class GanSemanticRoleLabeler(Model):
             logits.unsqueeze(0)
         
         batch_size, sequence_length, _ = logits.size()
+
+        self.temperature.data.clamp_(min = self.minimum_temperature)
+
         class_probs = F.gumbel_softmax(
             torch.log(logits.view(-1, self.num_classes) + self.minimum), 
             tau = self.temperature,

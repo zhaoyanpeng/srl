@@ -89,7 +89,8 @@
     //  ]
     //],
     "binary_feature_dim": 100, 
-    "temperature": 0.3
+    "temperature": 0.01,
+    "fixed_temperature": true
   },
   "iterator": {
     "type": "bucket",
@@ -105,10 +106,10 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
-    "dis_skip_nepoch": 1,
-    "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.1,
+    "cuda_device": 0,
+    "dis_skip_nepoch": 5,
+    "gen_pretraining": 0,  
+    "dis_loss_scalar": 0.01,
     "gen_loss_scalar": 5.0,
     "optimizer": {
       "type": "adadelta",
