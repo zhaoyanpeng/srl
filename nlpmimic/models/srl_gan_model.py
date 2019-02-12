@@ -29,6 +29,7 @@ class GanSemanticRoleLabeler(Model):
                  binary_feature_dim: int,
                  temperature: float = 1.0,
                  fixed_temperature: bool = False,
+                 mask_empty_labels: bool = True,
                  embedding_dropout: float = 0.0,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -38,14 +39,16 @@ class GanSemanticRoleLabeler(Model):
 
         self.minimum = 1e-20
         self.minimum_temperature = 0.001
+        self.mask_empty_labels = mask_empty_labels
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
         self.label_embedder = label_embedder
         self.predicate_embedder = predicate_embedder
-
+        
         self.num_classes = self.vocab.get_vocab_size("srl_tags")
-
+        self.null_lemma_idx = self.vocab.get_token_index("NULL_LEMMA", namespace="lemmas")
+        
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
@@ -94,7 +97,6 @@ class GanSemanticRoleLabeler(Model):
         mask = get_text_field_mask(tokens)
         
         if self.training: # FIX ME: avoid unnecessary embedding look up when retrieving generator loss
-            embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
             embedded_predicates = self.predicate_embedder(predicates)
             # (batch_size, length, dim) -> (batch_size, dim, length)
             embedded_predicates = torch.transpose(embedded_predicates, 1, 2)
@@ -111,12 +113,10 @@ class GanSemanticRoleLabeler(Model):
             
             # verbal part
             embedded_verb_tokens = embedded_token_input[:batch_size, :]
-            embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
             embedded_verb_predicates = embedded_predicate_input[:batch_size, :] 
 
             # nominal part
             embedded_noun_tokens = embedded_token_input[batch_size:, :]
-            embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
             embedded_noun_predicates = embedded_predicate_input[batch_size:, :] 
             
             embedded_tokens = embedded_noun_tokens
@@ -160,17 +160,31 @@ class GanSemanticRoleLabeler(Model):
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
-            # srl label masks 
-            full_label_masks = mask.clone()
-            full_label_masks[predicted_labels == 0] = 0
-            """
+            full_label_masks = mask.clone() # srl label masks
+                        
+            print('\nlemmas: ', lemmas)
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
             print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-            print('mask: ', mask, mask.requires_grad)
-            print('used_mask ', used_mask, used_mask.requires_grad)
-            print('label_masks ', full_label_masks, full_label_masks.requires_grad)
-            """
             
+            if self.mask_empty_labels:
+                # mask out empty labels 
+                full_label_masks[predicted_labels == 0] = 0
+            else:
+                # use a special lemma embedding empty labels
+                lemmas = lemmas['lemmas']
+                lemmas = lemmas * (predicted_labels != 0).long()
+                lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
+                lemmas = {'lemmas': lemmas}
+            
+            print('masked lemmas:', lemmas)
+            print('label_masks ', full_label_masks, full_label_masks.requires_grad)
+            import sys
+            sys.exit(0)
+            
+            embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
+            embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
+            embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
+                
             #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
             

@@ -1,6 +1,9 @@
 // Configuration for a semantic role labeler model based on:
 //   He, Luheng et al. “Deep Semantic Role Labeling: What Works and What's Next.” ACL (2017).
 {
+  "vocabulary": {
+    "tokens_to_add": {"lemmas": ["NULL_LEMMA"]}
+  },
   "dataset_reader":{
     "type":"conll2009",
     "feature_labels": ["pos", "dep"],
@@ -89,7 +92,9 @@
       //]
     ],
     "binary_feature_dim": 2, 
-    "temperature": 0.06
+    "temperature": 0.01,
+    "fixed_temperature": true,
+    "mask_empty_labels": false 
   },
   "iterator": {
     "type": "bucket",
@@ -103,10 +108,10 @@
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
-    "dis_skip_nepoch": 1,
-    "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.1,
+    "cuda_device": 0,
+    "dis_skip_nepoch": 5,
+    "gen_pretraining": 0,  
+    "dis_loss_scalar": 0.01,
     "gen_loss_scalar": 5.0,
     "optimizer": {
       "type": "adadelta",

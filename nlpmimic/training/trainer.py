@@ -68,7 +68,8 @@ class TrainerPieces(NamedTuple):
         """
         
         model = Model.from_params(vocab=vocab, params=params.pop('model'))
-
+        #print('>>>the null lemma embedding index is {}'.format(model.null_lemma_idx))
+        
         # Initializing the model can have side effect of expanding the vocabulary
         vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 
