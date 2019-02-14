@@ -27,10 +27,11 @@ class GanSemanticRoleLabeler(Model):
                  seq_encoder: Seq2SeqEncoder,
                  srl_encoder: Seq2VecEncoder,
                  binary_feature_dim: int,
-                 temperature: float = 1.0,
+                 temperature: float = 1.,
                  fixed_temperature: bool = False,
                  mask_empty_labels: bool = True,
-                 embedding_dropout: float = 0.0,
+                 embedding_dropout: float = 0.,
+                 zero_null_lemma_embedding: bool = False, 
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
@@ -48,6 +49,20 @@ class GanSemanticRoleLabeler(Model):
         
         self.num_classes = self.vocab.get_vocab_size("srl_tags")
         self.null_lemma_idx = self.vocab.get_token_index("NULL_LEMMA", namespace="lemmas")
+        
+        if zero_null_lemma_embedding:
+            embedder = getattr(self.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
+            print(embedder.weight) 
+            print(embedder.weight.size())
+            embedder.weight[self.null_lemma_idx, :] = 0.
+            print(embedder.weight)
+        
+            a = {'lemmas': torch.tensor(self.null_lemma_idx)}
+            vec = self.lemma_embedder(a)
+            print(vec)
+            vec = self.lemma_embedder(a)
+            print(vec)
+
         
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
@@ -156,16 +171,16 @@ class GanSemanticRoleLabeler(Model):
         
         
         if self.training:
-            noun_labels, embedded_noun_labels = self._argmax_logits(class_probabilities, used_mask)
+            noun_labels, _ = self._argmax_logits(class_probabilities, used_mask)
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
             full_label_masks = mask.clone() # srl label masks
-            """            
+                        
             print('\nlemmas: ', lemmas)
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
             print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-            """
+
             if self.mask_empty_labels:
                 # mask out empty labels 
                 full_label_masks[predicted_labels == 0] = 0
@@ -175,18 +190,21 @@ class GanSemanticRoleLabeler(Model):
                 lemmas = lemmas * (predicted_labels != 0).long()
                 lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
                 lemmas = {'lemmas': lemmas}
-            """
+            
             print('masked lemmas:', lemmas)
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
-            import sys
-            sys.exit(0)
-            """
+            
             embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
             embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
             embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
                 
-            #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
+            embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
+            
+            print(embedded_noun_lemmas)
+
+            import sys
+            sys.exit(0)
             
             gan_loss_input = {'v_embedded_tokens': embedded_verb_tokens,
                               'v_embedded_lemmas': embedded_verb_lemmas,
@@ -373,6 +391,16 @@ class GanSemanticRoleLabeler(Model):
         #print('\ngumbel_size: {}\n'.format(class_probs.size()))
         
         #print(self.label_embedder.weight)
+        
+        print()
+        _, max_likelihood_sequence = torch.max(logits, -1)
+        for i, length in enumerate(sequence_lengths):
+            max_likelihood_sequence[i, length:] = 0
+            tags = [self.vocab.get_token_from_index(x.item(), namespace="srl_tags")
+                    for x in max_likelihood_sequence[i, :]]
+            print(tags)
+        print('\nmax_ll_sequence:\n{}'.format(max_likelihood_sequence))
+         
         
         embedded_labels = torch.matmul(class_probs, self.label_embedder.weight) 
         _, max_likelihood_sequence = torch.max(class_probs, -1)

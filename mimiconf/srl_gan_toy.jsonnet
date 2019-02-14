@@ -38,7 +38,7 @@
             "embedding_dim": 2,
             //"pretrained_file": "/disk/scratch1/s1847450/data/embeding/glove.6B.100d.vec.c2009",
             "vocab_namespace": "lemmas",
-            "trainable": true 
+            "trainable": false 
         }
       }
     },
@@ -72,8 +72,8 @@
         "tag_projection_layer.*weight",
         {
           //"type": "orthogonal"
-          //"type": "xavier_uniform"
-          "type": "normal"
+          "type": "xavier_uniform"
+          //"type": "normal"
           //"type": "uniform"
           //"type": "xavier_normal"
         }
@@ -93,8 +93,9 @@
     ],
     "binary_feature_dim": 2, 
     "temperature": 0.01,
-    "fixed_temperature": true,
-    "mask_empty_labels": false 
+    "fixed_temperature": false,
+    "mask_empty_labels": false,
+    "zero_null_lemma_embedding": true,
   },
   "iterator": {
     "type": "bucket",
@@ -108,7 +109,7 @@
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 3,
     "dis_skip_nepoch": 5,
     "gen_pretraining": 0,  
     "dis_loss_scalar": 0.01,
