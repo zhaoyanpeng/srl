@@ -52,18 +52,13 @@ class GanSemanticRoleLabeler(Model):
         
         if zero_null_lemma_embedding:
             embedder = getattr(self.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
-            print(embedder.weight) 
-            print(embedder.weight.size())
             embedder.weight[self.null_lemma_idx, :] = 0.
-            print(embedder.weight)
-        
-            a = {'lemmas': torch.tensor(self.null_lemma_idx)}
-            vec = self.lemma_embedder(a)
+            """
+            idx = {'lemmas': torch.tensor(self.null_lemma_idx)}
+            vec = self.lemma_embedder(idx)
+            print(embedder.weight, embedder.weight.size())
             print(vec)
-            vec = self.lemma_embedder(a)
-            print(vec)
-
-        
+            """
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
@@ -180,7 +175,7 @@ class GanSemanticRoleLabeler(Model):
             print('\nlemmas: ', lemmas)
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
             print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-
+            
             if self.mask_empty_labels:
                 # mask out empty labels 
                 full_label_masks[predicted_labels == 0] = 0
@@ -190,7 +185,7 @@ class GanSemanticRoleLabeler(Model):
                 lemmas = lemmas * (predicted_labels != 0).long()
                 lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
                 lemmas = {'lemmas': lemmas}
-            
+             
             print('masked lemmas:', lemmas)
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
             
@@ -202,7 +197,7 @@ class GanSemanticRoleLabeler(Model):
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
             
             print(embedded_noun_lemmas)
-
+            print(embedded_verb_lemmas)
             import sys
             sys.exit(0)
             
