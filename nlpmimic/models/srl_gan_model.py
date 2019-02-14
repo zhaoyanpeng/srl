@@ -38,7 +38,7 @@ class GanSemanticRoleLabeler(Model):
         super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.minimum = 1e-20
-        self.minimum_temperature = 0.001
+        self.minimum_temperature = 1e-5 
         self.mask_empty_labels = mask_empty_labels
 
         self.token_embedder = token_embedder
@@ -161,11 +161,11 @@ class GanSemanticRoleLabeler(Model):
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
             full_label_masks = mask.clone() # srl label masks
-                        
+            """            
             print('\nlemmas: ', lemmas)
             print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
             print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-            
+            """
             if self.mask_empty_labels:
                 # mask out empty labels 
                 full_label_masks[predicted_labels == 0] = 0
@@ -175,12 +175,12 @@ class GanSemanticRoleLabeler(Model):
                 lemmas = lemmas * (predicted_labels != 0).long()
                 lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
                 lemmas = {'lemmas': lemmas}
-            
+            """
             print('masked lemmas:', lemmas)
             print('label_masks ', full_label_masks, full_label_masks.requires_grad)
             import sys
             sys.exit(0)
-            
+            """
             embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
             embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
             embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 

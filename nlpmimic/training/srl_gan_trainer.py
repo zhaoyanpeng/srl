@@ -285,12 +285,12 @@ class GanSrlTrainer(Trainer):
                                       for_training=True, 
                                       retrive_generator_loss=True,
                                       reconstruction_loss=True,
-                                      only_reconstruction=True)
+                                      only_reconstruction=False)
             if torch.isnan(gen_loss):
                 raise ValueError("nan loss encountered")
             if torch.isnan(rec_loss):
                 raise ValueError("nan loss encountered")
-            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             
             # different methods of pre-training the generator, this will be switched 
             # to the unsupervised training as soon as we start training the discriminator
@@ -311,9 +311,9 @@ class GanSrlTrainer(Trainer):
             train_loss += gen_loss.item()
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
-            print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
-            if epoch >= self.dis_skip_nepoch and g_loss <= 0.3: # do optimize the discriminator
+            if epoch >= self.dis_skip_nepoch: #and g_loss <= 0.3: # do optimize the discriminator
                 # reset the training of the generator to the unsupervised training
                 self.gen_pretraining = -1
 
@@ -347,7 +347,7 @@ class GanSrlTrainer(Trainer):
             #    sys.exit(0)
 
             reconstruction_loss += rec_loss.item() 
-            print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
 
             # Update the description with the latest metrics
             metrics = mimic_training_util.get_metrics(self.model, 

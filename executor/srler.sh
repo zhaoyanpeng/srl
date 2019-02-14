@@ -1,5 +1,5 @@
-fold=srl_verb_lyu
-data=ood
+fold=srl_gan_0.001_fixed
+data=devel
 post=noun
 model_path=/disk/scratch1/s1847450/model/$fold/model.tar.gz
 input_file=/disk/scratch1/s1847450/data/conll09/separated/"$data"."$post"
