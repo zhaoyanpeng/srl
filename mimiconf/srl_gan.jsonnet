@@ -54,7 +54,7 @@
             "embedding_dim": 300,
             "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.300.20.vec.c2009",
             "vocab_namespace": "lemmas",
-            "trainable": true 
+            "trainable": false 
         }
       }
     },
@@ -83,18 +83,19 @@
       "embedding_dim": 500,
       "projected_dim": 200 
     },
-    //"initializer": [
-    //  [
-    //    "tag_projection_layer.*weight",
-    //    {
-    //      "type": "orthogonal"
-    //    }
-    //  ]
-    //],
+    "initializer": [
+      [
+        "tag_projection_layer.*weight",
+        {
+          "type": "xavier_uniform"
+        }
+      ]
+    ],
     "binary_feature_dim": 100, 
     "temperature": 1e-2,
     "fixed_temperature": false,
-    "mask_empty_labels": false 
+    "mask_empty_labels": true, 
+    "zero_null_lemma_embedding": true,
   },
   "iterator": {
     "type": "bucket",
@@ -111,9 +112,9 @@
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 0,
-    "dis_skip_nepoch": 1,
-    "gen_pretraining": 1,  
-    "dis_loss_scalar": 0.05,
+    "dis_skip_nepoch": 0,
+    "gen_pretraining": -1,  
+    "dis_loss_scalar": 0.005,
     "gen_loss_scalar": 1.0,
     "optimizer": {
       "type": "adadelta",
