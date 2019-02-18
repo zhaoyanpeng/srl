@@ -15,7 +15,7 @@
   
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
+  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   //"datasets_for_vocab_creation": ["vocab"],
   "model": {
@@ -71,8 +71,8 @@
       [
         "tag_projection_layer.*weight",
         {
-          //"type": "orthogonal"
-          "type": "xavier_uniform"
+          "type": "orthogonal"
+          //"type": "xavier_uniform"
           //"type": "normal"
           //"type": "uniform"
           //"type": "xavier_normal"
@@ -100,7 +100,7 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 5 
+    "batch_size": 2 
   },
   "trainer": {
     "type": "srl_gan",
@@ -110,8 +110,8 @@
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
-    "dis_skip_nepoch": 5,
-    "gen_pretraining": 0,  
+    "dis_skip_nepoch": 0,
+    "gen_pretraining": -1,  
     "dis_loss_scalar": 0.01,
     "gen_loss_scalar": 5.0,
     "optimizer": {

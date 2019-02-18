@@ -22,7 +22,8 @@
   //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.picked",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.picked",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
@@ -87,14 +88,15 @@
       [
         "tag_projection_layer.*weight",
         {
-          "type": "xavier_uniform"
+            "type": "orthogonal"
         }
       ]
     ],
     "binary_feature_dim": 100, 
     "temperature": 1e-2,
-    "fixed_temperature": false,
-    "mask_empty_labels": true, 
+    "fixed_temperature": true,
+    "mask_empty_labels": false, 
+    "embedding_dropout": 0.3,
     "zero_null_lemma_embedding": true,
   },
   "iterator": {
@@ -111,10 +113,10 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 2,
     "dis_skip_nepoch": 0,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.005,
+    "dis_loss_scalar": 1.0,
     "gen_loss_scalar": 1.0,
     "optimizer": {
       "type": "adadelta",

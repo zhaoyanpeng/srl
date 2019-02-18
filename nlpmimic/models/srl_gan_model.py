@@ -209,7 +209,6 @@ class GanSemanticRoleLabeler(Model):
                               'n_embedded_lemmas': embedded_noun_lemmas,
                               'n_embedded_predicates': embedded_noun_predicates,
                               'n_embedded_labels': embedded_noun_labels}
-
             self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
             
             #print('\nlogits:\n{}'.format(logits))
@@ -337,7 +336,6 @@ class GanSemanticRoleLabeler(Model):
         if retrive_generator_loss:
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
-            logits = logits.squeeze(-1)
             logits = torch.sigmoid(logits)
             # fake labels 
             real_labels = mask[:, 0].detach().clone().fill_(1).float()
@@ -357,7 +355,6 @@ class GanSemanticRoleLabeler(Model):
             embedded_input = torch.cat([embedded_verb, embedded_noun], 0)
             
             logits = self.srl_encoder(embedded_input, mask)
-            logits = logits.squeeze(-1)
             logits = torch.sigmoid(logits)
             # fake labels
             fake_labels = mask[:batch_size, 0].detach().clone().fill_(0).float()
@@ -375,7 +372,7 @@ class GanSemanticRoleLabeler(Model):
         
         batch_size, sequence_length, _ = logits.size()
 
-        self.temperature.data.clamp_(min = self.minimum_temperature)
+        #self.temperature.data.clamp_(min = self.minimum_temperature)
 
         class_probs = F.gumbel_softmax(
             torch.log(logits.view(-1, self.num_classes) + self.minimum), 

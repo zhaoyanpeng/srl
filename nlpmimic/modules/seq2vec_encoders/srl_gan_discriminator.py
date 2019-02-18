@@ -69,6 +69,16 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         projected_tokens = self._projection(tokens)
         projected_tokens = self._activation(projected_tokens)
         
+        # (batch_size, length, dim) -> (batch_size, length, 1)
+        all_logits = self._logits(projected_tokens)
+        all_logits = self._activation(all_logits)
+
+        divider = 1. / torch.sum(mask, -1).float()
+        divider = divider.unsqueeze(-1).unsqueeze(-1).expand(-1, length, -1)
+        # -- * (batch_size, length, 1) -> (batch_size, 1, 1) -> (batch_size,)
+        logits = torch.bmm(all_logits.transpose(1, 2), divider).squeeze(-1).squeeze(-1)
+
+        """
         divider = 1. / torch.sum(mask, -1).float()
         divider = divider.unsqueeze(-1).unsqueeze(-1).expand(-1, length, -1)
         
@@ -76,6 +86,6 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         features = torch.bmm(projected_tokens.transpose(1, 2), divider)
         features = features.squeeze(-1)
 
-        logits = self._logits(features)
-        
+        logits = self._logits(features).squeeze(-1)
+        """
         return logits 

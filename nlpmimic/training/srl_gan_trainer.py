@@ -161,7 +161,8 @@ class GanSrlTrainer(Trainer):
                    for_training: bool, 
                    retrive_generator_loss: bool,
                    reconstruction_loss: bool = True,
-                   only_reconstruction: bool = False) -> torch.Tensor:
+                   only_reconstruction: bool = False,
+                   peep_prediction: bool = False) -> torch.Tensor:
         """
         Does a forward pass on the given batch and returns the ``loss`` value in the result.
         If ``for_training`` is `True` also applies regularization penalty.
@@ -188,6 +189,12 @@ class GanSrlTrainer(Trainer):
                 rec_loss = output_dict["rec_loss"]
             else:
                 rec_loss = None
+            if peep_prediction: #and not for_training:
+                output_dict = self.model.decode(output_dict)
+                tokens = output_dict['tokens'][:10]
+                labels = output_dict['srl_tags'][:10]
+                for token, label in zip(tokens, labels):
+                    print('\n{}\n{}'.format(token, label))
         except KeyError:
             if for_training:
                 raise RuntimeError("The model you are trying to optimize does not contain a"
@@ -273,6 +280,12 @@ class GanSrlTrainer(Trainer):
         
         cumulative_batch_size = 0
         for batch in train_generator_tqdm:
+            if batches_this_epoch % 100 == 0:
+                peep = False 
+                #print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+            else:
+                #print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+                peep = False
             batches_this_epoch += 1
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
@@ -285,12 +298,13 @@ class GanSrlTrainer(Trainer):
                                       for_training=True, 
                                       retrive_generator_loss=True,
                                       reconstruction_loss=True,
-                                      only_reconstruction=False)
+                                      only_reconstruction=False,
+                                      peep_prediction=peep)
             if torch.isnan(gen_loss):
                 raise ValueError("nan loss encountered")
             if torch.isnan(rec_loss):
                 raise ValueError("nan loss encountered")
-            #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             
             # different methods of pre-training the generator, this will be switched 
             # to the unsupervised training as soon as we start training the discriminator
@@ -311,7 +325,7 @@ class GanSrlTrainer(Trainer):
             train_loss += gen_loss.item()
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
-            #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
+            print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
             if epoch >= self.dis_skip_nepoch: #and g_loss <= 0.3: # do optimize the discriminator
                 # reset the training of the generator to the unsupervised training
@@ -347,7 +361,7 @@ class GanSrlTrainer(Trainer):
             #    sys.exit(0)
 
             reconstruction_loss += rec_loss.item() 
-            #print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
+            print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
 
             # Update the description with the latest metrics
             metrics = mimic_training_util.get_metrics(self.model, 
@@ -427,7 +441,8 @@ class GanSrlTrainer(Trainer):
             _, loss = self.batch_loss(batch, 
                                       for_training=False,
                                       retrive_generator_loss=False, # dead; active only during training
-                                      reconstruction_loss=True) # implying gold labels exist
+                                      reconstruction_loss=True, # implying gold labels exist
+                                      peep_prediction=True)
             if loss is not None:
                 # You shouldn't necessarily have to compute a loss for validation, so we allow for
                 # `loss` to be None.  We need to be careful, though - `batches_this_epoch` is
