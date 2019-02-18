@@ -93,7 +93,7 @@
     ],
     "binary_feature_dim": 2, 
     "temperature": 0.01,
-    "fixed_temperature": false,
+    "fixed_temperature": true,
     "mask_empty_labels": false,
     "zero_null_lemma_embedding": true,
   },

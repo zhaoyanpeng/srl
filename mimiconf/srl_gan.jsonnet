@@ -39,12 +39,12 @@
         //}
         "elmo": {
             "type": "elmo_token_embedder",
-            //"options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
-            //"weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
-            "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
-            "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
+            "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
+            "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
+            //"options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
+            //"weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
             "do_layer_norm": false,
-            "dropout": 0.1
+            "dropout": 0.0
         }
       }
     },
@@ -63,13 +63,13 @@
       "embedding_dim": 100,
       "vocab_namespace": "srl_tags",
       "trainable": true,
-      "sparse": false 
+      "sparse": true 
     },
     "predicate_embedder": {
       "embedding_dim": 100,
       "vocab_namespace": "predicates",
       "trainable": true, 
-      "sparse": false 
+      "sparse": true 
     },
     "seq_encoder": {
       "type": "stacked_bidirectional_lstm",
@@ -93,7 +93,7 @@
       ]
     ],
     "binary_feature_dim": 100, 
-    "temperature": 1e-2,
+    "temperature": 1e1,
     "fixed_temperature": true,
     "mask_empty_labels": false, 
     "embedding_dropout": 0.3,
@@ -107,24 +107,32 @@
   "trainer": {
     "type": "srl_gan",
     "num_epochs": 500,
-    //"grad_norm": 5.0,
-    "grad_clipping": 1.0,
+    "grad_norm": 5.0,
+    //"grad_clipping": 1.0,
     "patience": 30,
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 0,
     "dis_skip_nepoch": 0,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 1.0,
+    "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "optimizer": {
-      "type": "adadelta",
-      "rho": 0.95
+      "type": "dense_sparse_adam",
+      "betas": [0.9, 0.9]
     },
     "optimizer_dis": {
-      "type": "adadelta",
-      "rho": 0.95
+      "type": "dense_sparse_adam",
+      "betas": [0.9, 0.9]
     }
+    //"optimizer": {
+    //  "type": "adadelta",
+    //  "rho": 0.95
+    //},
+    //"optimizer_dis": {
+    //  "type": "adadelta",
+    //  "rho": 0.95
+    //}
   }
 }

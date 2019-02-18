@@ -166,7 +166,7 @@ class GanSemanticRoleLabeler(Model):
         
         
         if self.training:
-            noun_labels, _ = self._argmax_logits(class_probabilities, used_mask)
+            noun_labels, embedded_noun_labels = self._argmax_logits(class_probabilities, used_mask)
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
@@ -193,7 +193,7 @@ class GanSemanticRoleLabeler(Model):
             embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
             embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
                 
-            embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
+            #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
             """ 
             print(embedded_noun_lemmas)
@@ -372,7 +372,7 @@ class GanSemanticRoleLabeler(Model):
         
         batch_size, sequence_length, _ = logits.size()
 
-        #self.temperature.data.clamp_(min = self.minimum_temperature)
+        self.temperature.data.clamp_(min = self.minimum_temperature)
 
         class_probs = F.gumbel_softmax(
             torch.log(logits.view(-1, self.num_classes) + self.minimum), 
@@ -394,7 +394,8 @@ class GanSemanticRoleLabeler(Model):
         print('\nmax_ll_sequence:\n{}'.format(max_likelihood_sequence))
         """
         
-        embedded_labels = torch.matmul(class_probs, self.label_embedder.weight) 
+        embedded_labels =self.embedding_dropout(
+            torch.matmul(class_probs, self.label_embedder.weight)) 
         _, max_likelihood_sequence = torch.max(class_probs, -1)
         for i, length in enumerate(sequence_lengths):
             max_likelihood_sequence[i, length:] = 0
