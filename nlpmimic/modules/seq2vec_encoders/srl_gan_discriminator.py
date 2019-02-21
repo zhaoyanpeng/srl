@@ -128,31 +128,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         probs = probs.squeeze(-1).squeeze(-1)
         #print(probs, probs.size())
         
-        if (probs > 1).sum() > 0 or (probs < 0).sum() > 0:
-            print(probs)
-            print(individual_probs)
-            print(weights)
-
-            index = probs > 1 
-            torch.set_printoptions(precision=25)
-            print(probs)
-            for i, x in enumerate(index):
-                if x:
-                    print(i, probs[i])
-                    print(individual_probs[i, :, :])
-                    print(weights[i, :, :])
-                    print()
-
-            print('happy shitting') 
-            index = probs < 0 
-            torch.set_printoptions(precision=25)
-            print(probs)
-            for i, x in enumerate(index):
-                if x:
-                    print(i, probs[i])
-                    print(individual_probs[i, :, :])
-                    print(weights[i, :, :])
-                    print()
+        probs.clamp_(max = 1.0) # fix float precision problem
         return probs
     
     def model_b(self, tokens: torch.Tensor, mask: torch.Tensor = None):
