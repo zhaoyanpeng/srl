@@ -39,10 +39,10 @@
         //}
         "elmo": {
             "type": "elmo_token_embedder",
-            "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
-            "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
-            //"options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
-            //"weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
+            //"options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
+            //"weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
+            "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
+            "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
             "do_layer_norm": false,
             "dropout": 0.0
         }
@@ -63,13 +63,13 @@
       "embedding_dim": 100,
       "vocab_namespace": "srl_tags",
       "trainable": true,
-      "sparse": true 
+      "sparse": false 
     },
     "predicate_embedder": {
       "embedding_dim": 100,
       "vocab_namespace": "predicates",
       "trainable": true, 
-      "sparse": true 
+      "sparse": false 
     },
     "seq_encoder": {
       "type": "stacked_bidirectional_lstm",
@@ -81,8 +81,12 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
+      "module_choice": "c",
       "embedding_dim": 500,
-      "projected_dim": 200 
+      "projected_dim": 200,
+      "hidden_size": 200,
+      "attent_size": 200,
+      "num_layer": 1
     },
     "initializer": [
       [
@@ -93,22 +97,23 @@
       ]
     ],
     "binary_feature_dim": 100, 
-    "temperature": 0.1,
-    "fixed_temperature": false,
+    "temperature": 1.0,
+    "fixed_temperature": true,
     "mask_empty_labels": false, 
-    "embedding_dropout": 0.3,
+    //"embedding_dropout": 0.3,
     "zero_null_lemma_embedding": true,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 64 
+    "batch_size": 64,
+    "padding_noise": 0.0
   },
   "trainer": {
     "type": "srl_gan",
     "num_epochs": 500,
-    "grad_norm": 5.0,
-    //"grad_clipping": 1.0,
+    //"grad_norm": 5.0,
+    "grad_clipping": 1.0,
     "patience": 30,
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
@@ -116,23 +121,23 @@
     "cuda_device": 0,
     "dis_skip_nepoch": 0,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.05,
+    "dis_loss_scalar": 1.0,
     "gen_loss_scalar": 1.0,
-    "optimizer": {
-      "type": "dense_sparse_adam",
-      "betas": [0.9, 0.9]
-    },
-    "optimizer_dis": {
-      "type": "dense_sparse_adam",
-      "betas": [0.9, 0.9]
-    }
     //"optimizer": {
-    //  "type": "adadelta",
-    //  "rho": 0.95
+    //  "type": "dense_sparse_adam",
+    //  "betas": [0.9, 0.9]
     //},
     //"optimizer_dis": {
-    //  "type": "adadelta",
-    //  "rho": 0.95
+    //  "type": "dense_sparse_adam",
+    //  "betas": [0.9, 0.9]
     //}
+    "optimizer": {
+      "type": "adadelta",
+      "rho": 0.95
+    },
+    "optimizer_dis": {
+      "type": "adadelta",
+      "rho": 0.95
+    }
   }
 }

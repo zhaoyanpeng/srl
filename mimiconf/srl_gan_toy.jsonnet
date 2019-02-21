@@ -64,8 +64,12 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
+      "module_choice": "c",
       "embedding_dim": 6,
-      "projected_dim": 4
+      "projected_dim": 4,
+      "hidden_size": 2,
+      "attent_size": 2,
+      "num_layer": 1
     },
     "initializer": [
       [
@@ -100,11 +104,11 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 2 
+    "batch_size": 1 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 5,
+    "num_epochs": 2,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,

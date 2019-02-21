@@ -6,7 +6,7 @@ import re
 import random
 import datetime
 import traceback
-from typing import Dict, Optional, List, Tuple, Union, Iterable, Iterator, Any, NamedTuple
+from typing import cast, Dict, Optional, List, Tuple, Union, Iterable, Iterator, Any, NamedTuple
 
 import torch
 import torch.optim.lr_scheduler
@@ -14,7 +14,7 @@ import torch.optim.lr_scheduler
 from allennlp.common import Params
 from allennlp.common.checks import ConfigurationError
 from allennlp.common.util import (dump_metrics, gpu_memory_mb, parse_cuda_device, peak_memory_mb,
-                                  get_frozen_and_tunable_parameter_names)
+                                  get_frozen_and_tunable_parameter_names, add_noise_to_dict_values)
 from allennlp.common.util import (ensure_list, lazy_groups_of)
 from allennlp.common.tqdm import Tqdm
 from allennlp.data.dataset import Batch
@@ -36,6 +36,32 @@ from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+def sort_by_padding(instances: List[Instance],
+                    sorting_keys: List[Tuple[str, str]],  # pylint: disable=invalid-sequence-index
+                    vocab: Vocabulary,
+                    padding_noise: float = 0.0,
+                    reverse: bool = False) -> List[Instance]:
+    """
+    Sorts the instances by their padding lengths, using the keys in
+    ``sorting_keys`` (in the order in which they are provided).  ``sorting_keys`` is a list of
+    ``(field_name, padding_key)`` tuples.
+    """
+    instances_with_lengths = []
+    for instance in instances:
+        # Make sure instance is indexed before calling .get_padding
+        instance.index_fields(vocab)
+        padding_lengths = cast(Dict[str, Dict[str, float]], instance.get_padding_lengths())
+        if padding_noise > 0.0:
+            noisy_lengths = {}
+            for field_name, field_lengths in padding_lengths.items():
+                noisy_lengths[field_name] = add_noise_to_dict_values(field_lengths, padding_noise)
+            padding_lengths = noisy_lengths
+        instance_with_lengths = ([padding_lengths[field_name][padding_key]
+                                  for (field_name, padding_key) in sorting_keys],
+                                 instance)
+        instances_with_lengths.append(instance_with_lengths)
+    instances_with_lengths.sort(key=lambda x: x[0], reverse=reverse)
+    return [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
 
 @TrainerBase.register("srl_gan")
 class GanSrlTrainer(Trainer):
@@ -148,7 +174,18 @@ class GanSrlTrainer(Trainer):
                 self.train_dy_data is not None:
             for dx_batch in lazy_groups_of(_iterate(self.train_dx_data), self.iterator._batch_size):
                 dy_batch = self._sample(self.train_dy_data, len(dx_batch))
-                dy_dx_batch = dy_batch + dx_batch
+                # need to sort instances by length when we have to construct PackedSequence 
+                sorted_dy_batch = sort_by_padding(dy_batch, 
+                                                  self.iterator._sorting_keys,
+                                                  self.iterator.vocab,
+                                                  self.iterator._padding_noise,
+                                                  reverse=True)
+                sorted_dx_batch = sort_by_padding(dx_batch, 
+                                                  self.iterator._sorting_keys,
+                                                  self.iterator.vocab,
+                                                  self.iterator._padding_noise,
+                                                  reverse=True)
+                dy_dx_batch = sorted_dy_batch + sorted_dx_batch
                 batch = Batch(dy_dx_batch)
                 batch.index_instances(self.model.vocab)
                 batch = batch.as_tensor_dict()
@@ -281,8 +318,8 @@ class GanSrlTrainer(Trainer):
         cumulative_batch_size = 0
         for batch in train_generator_tqdm:
             if batches_this_epoch % 100 == 0:
-                peep = False 
-                #print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+                peep = True 
+                print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             else:
                 #print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
                 peep = False
@@ -304,7 +341,7 @@ class GanSrlTrainer(Trainer):
                 raise ValueError("nan loss encountered")
             if torch.isnan(rec_loss):
                 raise ValueError("nan loss encountered")
-            print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             
             # different methods of pre-training the generator, this will be switched 
             # to the unsupervised training as soon as we start training the discriminator
@@ -325,7 +362,7 @@ class GanSrlTrainer(Trainer):
             train_loss += gen_loss.item()
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
-            print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
             if epoch >= self.dis_skip_nepoch: #and g_loss <= 0.3: # do optimize the discriminator
                 # reset the training of the generator to the unsupervised training
@@ -361,7 +398,7 @@ class GanSrlTrainer(Trainer):
             #    sys.exit(0)
 
             reconstruction_loss += rec_loss.item() 
-            print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
+            #print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
 
             # Update the description with the latest metrics
             metrics = mimic_training_util.get_metrics(self.model, 

@@ -336,7 +336,6 @@ class GanSemanticRoleLabeler(Model):
         if retrive_generator_loss:
             mask = mask[batch_size:]
             logits = self.srl_encoder(embedded_noun, mask)  
-            logits = torch.sigmoid(logits)
             # fake labels 
             real_labels = mask[:, 0].detach().clone().fill_(1).float()
             gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
@@ -352,16 +351,23 @@ class GanSemanticRoleLabeler(Model):
                              embedded_verb_lemmas]
 
             embedded_verb = torch.cat(verb_features, -1)
-            embedded_input = torch.cat([embedded_verb, embedded_noun], 0)
+            #embedded_input = torch.cat([embedded_verb, embedded_noun], 0)
+
+            #logits = self.srl_encoder(embedded_input, mask)
+            mask_noun = mask[batch_size:]
+            logits_noun = self.srl_encoder(embedded_noun, mask_noun) 
             
-            logits = self.srl_encoder(embedded_input, mask)
-            logits = torch.sigmoid(logits)
+            mask_verb = mask[:batch_size]
+            logits_verb = self.srl_encoder(embedded_verb, mask_verb)
+            
             # fake labels
             fake_labels = mask[:batch_size, 0].detach().clone().fill_(0).float()
             real_labels = mask[:batch_size, 0].detach().clone().fill_(1).float()
             
-            dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
-                     + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
+            #dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
+            #         + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
+            dis_loss = F.binary_cross_entropy(logits_verb, real_labels, reduction='mean') \
+                     + F.binary_cross_entropy(logits_noun, fake_labels, reduction='mean') 
             output_dict['dis_loss'] = dis_loss / 2 
         return None 
        
