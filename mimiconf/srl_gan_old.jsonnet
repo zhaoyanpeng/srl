@@ -97,7 +97,7 @@
       ]
     ],
     "binary_feature_dim": 100, 
-    "temperature": 1.0,
+    "temperature": 5,
     "fixed_temperature": true,
     "mask_empty_labels": false, 
     //"embedding_dropout": 0.3,
@@ -118,10 +118,11 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 2,
     "dis_skip_nepoch": 0,
+    "gen_skip_nepoch": 1,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 1.0,
+    "dis_loss_scalar": 0.5,
     "gen_loss_scalar": 1.0,
     //"optimizer": {
     //  "type": "dense_sparse_adam",

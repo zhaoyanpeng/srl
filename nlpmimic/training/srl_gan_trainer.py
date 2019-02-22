@@ -82,6 +82,7 @@ class GanSrlTrainer(Trainer):
                  shuffle: bool = True,
                  num_epochs: int = 20,
                  dis_skip_nepoch: int = -1,
+                 gen_skip_nepoch: int = -1, 
                  gen_pretraining: int = -1,
                  dis_loss_scalar: float = 1.0,
                  gen_loss_scalar: float = 1.0,
@@ -146,6 +147,7 @@ class GanSrlTrainer(Trainer):
             self._tensorboard.enable_activation_logging(self.model)
         
         self.dis_skip_nepoch = dis_skip_nepoch
+        self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
 
     def _sample(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
@@ -329,37 +331,41 @@ class GanSrlTrainer(Trainer):
             
             #print(batch)
             
-            # update generator
-            self.optimizer.zero_grad()
-            gen_loss, rec_loss = self.batch_loss(batch, 
-                                      for_training=True, 
-                                      retrive_generator_loss=True,
-                                      reconstruction_loss=True,
-                                      only_reconstruction=False,
-                                      peep_prediction=peep)
-            if torch.isnan(gen_loss):
-                raise ValueError("nan loss encountered")
-            if torch.isnan(rec_loss):
-                raise ValueError("nan loss encountered")
-            #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
-            
-            # different methods of pre-training the generator, this will be switched 
-            # to the unsupervised training as soon as we start training the discriminator
-            if self.gen_pretraining > 0:       # semi-supervised 
-                #logger.info('------supervised')
-                gen_loss = gen_loss + rec_loss
-                gen_loss.backward()
-            elif self.gen_pretraining == 0:    # supervised
-                rec_loss.backward()            
-            else:                              # unsupervised
-                #logger.info('------un-supervised')
-                gen_loss *= self.gen_loss_scalar 
-                gen_loss.backward()
-            
-            gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
+            if epoch >= self.gen_skip_nepoch:
+                # update generator
+                self.optimizer.zero_grad()
+                gen_loss, rec_loss = self.batch_loss(batch, 
+                                          for_training=True, 
+                                          retrive_generator_loss=True,
+                                          reconstruction_loss=True,
+                                          only_reconstruction=False,
+                                          peep_prediction=peep)
+                if torch.isnan(gen_loss):
+                    raise ValueError("nan loss encountered")
+                if torch.isnan(rec_loss):
+                    raise ValueError("nan loss encountered")
+                #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
+                
+                # different methods of pre-training the generator, this will be switched 
+                # to the unsupervised training as soon as we start training the discriminator
+                if self.gen_pretraining > 0:       # semi-supervised 
+                    #logger.info('------supervised')
+                    gen_loss = gen_loss + rec_loss
+                    gen_loss.backward()
+                elif self.gen_pretraining == 0:    # supervised
+                    rec_loss.backward()            
+                else:                              # unsupervised
+                    #logger.info('------un-supervised')
+                    gen_loss *= self.gen_loss_scalar 
+                    gen_loss.backward()
+                
+                gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
 
-            g_loss = gen_loss.item() / self.gen_loss_scalar
-            train_loss += gen_loss.item()
+                g_loss = gen_loss.item() / self.gen_loss_scalar
+                train_loss += gen_loss.item()
+            else:
+                g_loss = None
+                gen_batch_grad_norm = None
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
             #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
@@ -391,13 +397,16 @@ class GanSrlTrainer(Trainer):
                 d_loss = None
                 dis_batch_grad_norm = None 
                 #logger.info('------skip discriminator')
-                pass 
             #cnt += 1
             #if cnt >= 1:
             #    import sys
             #    sys.exit(0)
-
-            reconstruction_loss += rec_loss.item() 
+            
+            if rec_loss is not None:
+                reconstruction_loss += rec_loss.item() 
+            else:
+                reconstruction_loss = None 
+                
             #print('----------------------2. model.temperature is {}'.format(self.model.temperature.item()))
 
             # Update the description with the latest metrics
@@ -666,6 +675,7 @@ class GanSrlTrainer(Trainer):
         
         # customized settings for training
         dis_skip_nepoch = params.pop("dis_skip_nepoch", -1)
+        gen_skip_nepoch = params.pop("gen_skip_nepoch", -1)
         gen_pretraining = params.pop("gen_pretraining", -1)
         dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
@@ -734,6 +744,7 @@ class GanSrlTrainer(Trainer):
                    shuffle=shuffle,
                    num_epochs=num_epochs,
                    dis_skip_nepoch = dis_skip_nepoch,
+                   gen_skip_nepoch = gen_skip_nepoch,
                    gen_pretraining = gen_pretraining,
                    dis_loss_scalar = dis_loss_scalar,
                    gen_loss_scalar = gen_loss_scalar,

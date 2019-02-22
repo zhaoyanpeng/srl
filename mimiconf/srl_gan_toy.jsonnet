@@ -115,6 +115,7 @@
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
     "dis_skip_nepoch": 0,
+    "gen_skip_nepoch": 1,
     "gen_pretraining": -1,  
     "dis_loss_scalar": 0.01,
     "gen_loss_scalar": 5.0,
