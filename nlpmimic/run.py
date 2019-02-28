@@ -15,12 +15,14 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
 from allennlp.commands import main  # pylint: disable=wrong-import-position
 from nlpmimic.commands.srler import Srler
 from nlpmimic.commands.archive import Archive
+from nlpmimic.commands.srler_gan import SrlerGan 
 
 
 if __name__ == "__main__":
     subcommand_overrides = {
             "srler": Srler(),
-            "archive": Archive()
+            "archive": Archive(),
+            "srler_gan": SrlerGan()
     }
     
     main(prog="allennlp", subcommand_overrides = subcommand_overrides)
