@@ -149,6 +149,9 @@ class GanSrlTrainer(Trainer):
         self.dis_skip_nepoch = dis_skip_nepoch
         self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
+        
+        self.data_y_pivot = 0 # used in sampling y (verb) data
+
 
     def _sample(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
         instances = ensure_list(instances)
@@ -156,6 +159,18 @@ class GanSrlTrainer(Trainer):
         samples = random.sample(population=instances, k = batch_size) 
         return samples
     
+    def _sample_y(self, instances: Iterable[Instance], batch_size: int) -> Iterable[Instance]:
+        instances = ensure_list(instances)
+        samples = instances[self.data_y_pivot : self.data_y_pivot + batch_size]
+        nsample = len(samples)
+        if nsample < batch_size:
+            samples += instances[0 : batch_size - nsample]
+            self.data_y_pivot = 0
+            random.shuffle(instances)
+        else:
+            self.data_y_pivot += batch_size
+        return samples
+
     def _number_batches(self) -> int:
         if self.train_data is not None:
             return self.iterator.get_num_batches(self.train_data)
@@ -167,6 +182,7 @@ class GanSrlTrainer(Trainer):
 
     def _create_batches(self, num_epochs: int = 1) -> Iterator[TensorDict]:
         def _iterate(instances: Iterable[Instance]):
+            random.shuffle(instances)
             yield from instances
         # the above code mimics the valid input to `lazy_groups_of` 
         if self.train_data is not None:
@@ -175,7 +191,7 @@ class GanSrlTrainer(Trainer):
         elif self.train_dx_data is not None and \
                 self.train_dy_data is not None:
             for dx_batch in lazy_groups_of(_iterate(self.train_dx_data), self.iterator._batch_size):
-                dy_batch = self._sample(self.train_dy_data, len(dx_batch))
+                dy_batch = self._sample_y(self.train_dy_data, len(dx_batch))
                 # need to sort instances by length when we have to construct PackedSequence 
                 sorted_dy_batch = sort_by_padding(dy_batch, 
                                                   self.iterator._sorting_keys,
@@ -230,8 +246,8 @@ class GanSrlTrainer(Trainer):
                 rec_loss = None
             if peep_prediction: #and not for_training:
                 output_dict = self.model.decode(output_dict)
-                tokens = output_dict['tokens'][:10]
-                labels = output_dict['srl_tags'][:10]
+                tokens = output_dict['tokens'][:5]
+                labels = output_dict['srl_tags'][:5]
                 for token, label in zip(tokens, labels):
                     print('\n{}\n{}'.format(token, label))
         except KeyError:
@@ -316,10 +332,10 @@ class GanSrlTrainer(Trainer):
         train_generator_tqdm = Tqdm.tqdm(train_generator,
                                          total=num_training_batches)
         bsize, cnt = 15, 0
-        
+
         cumulative_batch_size = 0
         for batch in train_generator_tqdm:
-            if batches_this_epoch % 100 == 0:
+            if batches_this_epoch % 50 == 0:
                 peep = True 
                 print('\n----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
             else:
@@ -329,7 +345,11 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
-            #print(batch)
+            #print(batch) 
+            #print()
+            #for inst in batch['metadata']:
+            #    print(inst['predicate'])
+            #print()
             
             if epoch >= self.gen_skip_nepoch:
                 # update generator
