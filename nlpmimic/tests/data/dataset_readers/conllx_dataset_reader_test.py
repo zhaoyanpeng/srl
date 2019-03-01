@@ -18,7 +18,7 @@ class TestConll2003Reader():
         
         droot = '/disk/scratch1/s1847450/data/nyt_annotated/xchen/' 
         context_file = droot + 'nytimes.45.lemma.small'
-        appendix_file = droot + 'nytimes.arg.verb.small'
+        appendix_file = droot + 'nytimes.pre.verb.small'
 
         instances = conll_reader._read(context_file, appendix_file)
         instances = ensure_list(instances)

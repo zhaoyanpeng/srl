@@ -404,7 +404,15 @@ class GanSrlTrainer(Trainer):
                     raise ValueError("nan loss encountered")
                 if torch.isnan(rec_loss):
                     raise ValueError("nan loss encountered")
-                
+                """ 
+                d_loss = dis_loss.item() 
+                if d_loss > 0.6:
+                    dis_loss *= self.dis_loss_scalar
+                    dis_loss.backward()
+                    dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
+                else:
+                    dis_batch_grad_norm = None 
+                """
                 dis_loss *= self.dis_loss_scalar
                 dis_loss.backward()
                 dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
