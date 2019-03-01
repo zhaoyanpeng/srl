@@ -26,6 +26,7 @@ class SrlerGan(Subcommand):
         subparser.add_argument('context_file', type=str, help='path to context file')
         subparser.add_argument('appendix_file', type=str, help='path to appendix file')
 
+        subparser.add_argument('--indxes-file', type=str, default=None, help='path to output file')
         subparser.add_argument('--output-file', type=str, help='path to output file')
         subparser.add_argument('--output-gold', type=bool, default=False, help='wether output gold file or not')
 
@@ -113,6 +114,7 @@ class _PredictManager:
                  predictor: Predictor,
                  context_file: str,
                  appendix_file: str,
+                 indxes_file: str,
                  output_file: str,
                  batch_size: int,
                  output_gold: bool,
@@ -130,6 +132,11 @@ class _PredictManager:
             self._gold_output_file = open(gold_output_file, 'w')
         else:
             self._gold_output_file = None
+        
+        if indxes_file:
+            self._output_idxes = open(indxes_file, 'r')
+        else:
+            self._output_idxes = None
 
         self._batch_size = batch_size
         self._print_to_console = print_to_console
@@ -155,6 +162,21 @@ class _PredictManager:
             results = self._predictor.predict_batch_instance(batch_data)
         for output in results:
             yield self._prediction_to_str(output, restore_head)
+    
+    def _write_instances(self, labels: List[list], cnt: int, def_end = 'ENDING_OF_FILE'):
+        if len(labels) == 0:
+            print('err: ', labels, cnt)
+        while len(labels) > 0:
+            ncol = next(self._output_idxes, def_end)
+            if ncol == def_end:
+                print('err: ', labels, cnt)
+            end = int(ncol)
+            
+            data = labels[:end]
+            if len(data) != end:
+                print('err: ', labels, cnt)
+            labels = labels[end:] 
+            self._pred_output_file.write(pretty_format(data) + '\n')
 
     def _maybe_print_to_console_and_file(self,
                                          prediction: str,
@@ -179,6 +201,7 @@ class _PredictManager:
     def run(self, restore_head: bool = True) -> None:
         has_reader = self._dataset_reader is not None
         if has_reader:
+            cnt = 0
             empty = False 
             current_tokens = []
             current_labels = []
@@ -186,8 +209,13 @@ class _PredictManager:
                 for gold_instance, (tokens, labels) in zip(batch, self._predict_instances(batch, restore_head)):
                     if tokens != current_tokens:
                         if current_tokens != []:
-                            result = pretty_format(current_labels) 
-                            self._pred_output_file.write(result + '\n')
+                            if self._output_idxes is None:    
+                                result = pretty_format(current_labels) 
+                                self._pred_output_file.write(result + '\n')
+                            else: 
+                                cnt += 1
+                                self._write_instances(current_labels, cnt)
+                            
                             empty = True
 
                         current_tokens = tokens
@@ -219,6 +247,7 @@ def _predict(args: argparse.Namespace) -> None:
     manager = _PredictManager(predictor,
                               args.context_file,
                               args.appendix_file,
+                              args.indxes_file,
                               args.output_file,
                               args.batch_size,
                               args.output_gold,
