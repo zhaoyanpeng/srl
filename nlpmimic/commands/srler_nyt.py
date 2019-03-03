@@ -14,7 +14,7 @@ from allennlp.data.token_indexers.elmo_indexer import ELMoTokenCharactersIndexer
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 from nlpmimic.data.dataset_readers.conllx_unlabeled import ConllxUnlabeledDatasetReader
 
-class SrlerGan(Subcommand):
+class SrlerNyt(Subcommand):
     def add_subparser(self, name: str, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:
         # pylint: disable=protected-access
         description = '''Run the specified model against a JSON-lines input file.'''
