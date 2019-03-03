@@ -406,7 +406,7 @@ class GanSrlTrainer(Trainer):
                     raise ValueError("nan loss encountered")
                 """ 
                 d_loss = dis_loss.item() 
-                if d_loss > 0.6:
+                if d_loss > 0.5:
                     dis_loss *= self.dis_loss_scalar
                     dis_loss.backward()
                     dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
@@ -419,6 +419,7 @@ class GanSrlTrainer(Trainer):
                 
                 #logger.info('------discriminator')
                 d_loss = dis_loss.item() / self.dis_loss_scalar 
+                
                 train_loss += dis_loss.item()
                 #logger.info('------------------------optimizing the discriminator')
             else:
@@ -731,11 +732,11 @@ class GanSrlTrainer(Trainer):
                     parameters.append([n, p])
 
         logger.info("Following parameters belong to the discriminator (with gradient):")
-        for x in dis_param_names:
-            logger.info(x)
+        for x in dis_params:
+            logger.info('{} is leaf: {}'.format(x[0], x[1].is_leaf))
         logger.info("Following parameters belong to the generator (with gradient):")
-        for x in parameter_names:
-            logger.info(x)
+        for x in parameters:
+            logger.info('{} is leaf: {}'.format(x[0], x[1].is_leaf))
         
         #import sys
         #sys.exit(0)

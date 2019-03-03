@@ -65,7 +65,8 @@
     "srl_encoder": {
       "type": "srl_gan_dis",
       "module_choice": "c",
-      "embedding_dim": 6,
+      //"embedding_dim": 6,
+      "embedding_dim": 15,
       "projected_dim": 4,
       "hidden_size": 2,
       "attent_size": 2,
@@ -99,6 +100,7 @@
     "temperature": 0.01,
     "fixed_temperature": true,
     "mask_empty_labels": false,
+    "use_label_indicator": true,
     "zero_null_lemma_embedding": true,
   },
   "iterator": {
@@ -108,7 +110,7 @@
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 2,
+    "num_epochs": 1,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,

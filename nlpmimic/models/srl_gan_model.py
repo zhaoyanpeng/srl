@@ -31,6 +31,7 @@ class GanSemanticRoleLabeler(Model):
                  fixed_temperature: bool = False,
                  mask_empty_labels: bool = True,
                  embedding_dropout: float = 0.,
+                 use_label_indicator: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -51,6 +52,9 @@ class GanSemanticRoleLabeler(Model):
         self.null_lemma_idx = self.vocab.get_token_index("NULL_LEMMA", namespace="lemmas")
         
         if zero_null_lemma_embedding:
+            # this will make `lemma_embedder.token_embedder_lemmas.weight` become an non-leaf node
+            # when the weight is trainable, and further result in errors in optimizer cause the
+            # optimizer expects only leaf nodes.
             embedder = getattr(self.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
             embedder.weight[self.null_lemma_idx, :] = 0.
             """ 
@@ -59,6 +63,13 @@ class GanSemanticRoleLabeler(Model):
             print(embedder.weight, embedder.weight.size(), embedder.weight.requires_grad)
             print(vec)
             """
+        self.use_label_indicator = use_label_indicator
+        if self.use_label_indicator:
+            label_indicator = torch.zeros([self.num_classes, self.num_classes], dtype=torch.float)
+            for idx in range(self.num_classes):
+                label_indicator[idx, idx] = 1.
+            self.label_indicator = torch.nn.Embedding.from_pretrained(label_indicator, freeze=True)
+
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
@@ -195,9 +206,13 @@ class GanSemanticRoleLabeler(Model):
                 
             #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
             embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
-            """ 
-            print(embedded_noun_lemmas)
-            print(embedded_verb_lemmas)
+            if self.use_label_indicator:
+                label_indicator = self.label_indicator(srl_frames[:batch_size, :]) 
+                embedded_verb_labels = torch.cat([embedded_verb_labels, label_indicator], -1)
+            """
+            print('\nembedded_labels: {}\n'.format(embedded_verb_labels))
+            print('\nembedded_size: {}\n'.format(embedded_verb_labels.size()))
+            print('\nlabel_sequence:\n{}'.format(srl_frames[:batch_size, :]))
             import sys
             sys.exit(0)
             """
@@ -405,6 +420,10 @@ class GanSemanticRoleLabeler(Model):
         _, max_likelihood_sequence = torch.max(class_probs, -1)
         for i, length in enumerate(sequence_lengths):
             max_likelihood_sequence[i, length:] = 0
+        
+        if self.use_label_indicator:
+            label_indicator = self.label_indicator(max_likelihood_sequence)    
+            embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
 
         #print('\nembedded_labels: {}\n'.format(embedded_labels))
         #print('\nembedded_size: {}\n'.format(embedded_labels.size()))
