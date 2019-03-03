@@ -116,6 +116,7 @@
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
+    "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 1,
     "gen_pretraining": -1,  

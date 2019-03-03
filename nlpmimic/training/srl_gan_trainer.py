@@ -81,11 +81,12 @@ class GanSrlTrainer(Trainer):
                  validation_iterator: DataIterator = None,
                  shuffle: bool = True,
                  num_epochs: int = 20,
+                 dis_min_loss: float = -1.,
                  dis_skip_nepoch: int = -1,
                  gen_skip_nepoch: int = -1, 
                  gen_pretraining: int = -1,
-                 dis_loss_scalar: float = 1.0,
-                 gen_loss_scalar: float = 1.0,
+                 dis_loss_scalar: float = 1.,
+                 gen_loss_scalar: float = 1.,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -146,6 +147,7 @@ class GanSrlTrainer(Trainer):
         if histogram_interval is not None:
             self._tensorboard.enable_activation_logging(self.model)
         
+        self.dis_min_loss = dis_min_loss
         self.dis_skip_nepoch = dis_skip_nepoch
         self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
@@ -404,9 +406,9 @@ class GanSrlTrainer(Trainer):
                     raise ValueError("nan loss encountered")
                 if torch.isnan(rec_loss):
                     raise ValueError("nan loss encountered")
-                """ 
+                 
                 d_loss = dis_loss.item() 
-                if d_loss > 0.5:
+                if d_loss > self.dis_min_loss:
                     dis_loss *= self.dis_loss_scalar
                     dis_loss.backward()
                     dis_batch_grad_norm = self._gradient(self.optimizer_dis, False, batch_num_total)
@@ -419,7 +421,7 @@ class GanSrlTrainer(Trainer):
                 
                 #logger.info('------discriminator')
                 d_loss = dis_loss.item() / self.dis_loss_scalar 
-                
+                """ 
                 train_loss += dis_loss.item()
                 #logger.info('------------------------optimizing the discriminator')
             else:
@@ -708,6 +710,7 @@ class GanSrlTrainer(Trainer):
         gen_pretraining = params.pop("gen_pretraining", -1)
         dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
+        dis_min_loss = params.pop("dis_min_loss", -1.)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -772,6 +775,7 @@ class GanSrlTrainer(Trainer):
                    validation_iterator=validation_iterator,
                    shuffle=shuffle,
                    num_epochs=num_epochs,
+                   dis_min_loss = dis_min_loss, 
                    dis_skip_nepoch = dis_skip_nepoch,
                    gen_skip_nepoch = gen_skip_nepoch,
                    gen_pretraining = gen_pretraining,
