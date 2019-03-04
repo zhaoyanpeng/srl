@@ -46,8 +46,8 @@ class TestConll2003Reader():
         conll_reader = ConllxUnlabeledDatasetReader(
                                  feature_labels = ['pos', 'dep'], 
                                  move_preposition_head = False,
-                                 allow_null_predicate = True,
-                                 instance_type = 'basic') # pylint: disable=protected-access
+                                 allow_null_predicate = False,
+                                 instance_type = 'srl_gan') # pylint: disable=protected-access
         
         droot = '/disk/scratch1/s1847450/data/nyt_annotated/xchen/' 
         context_file = droot + 'nytimes.45.lemma.small'

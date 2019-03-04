@@ -4,6 +4,7 @@ Helper functions for Trainers
 from typing import Dict, List, Iterable, Optional 
 import logging
 
+from allennlp.common.util import ensure_list
 from allennlp.common.checks import ConfigurationError, check_for_data_path, check_for_gpu
 from allennlp.common.params import Params
 from allennlp.training.util import sparse_clip_norm
@@ -13,6 +14,7 @@ from allennlp.models.model import Model
 
 logger = logging.getLogger(__name__)
 
+NYT_READER_MODE = 'srl_nyt'
 GAN_READER_MODE = 'srl_gan'
 DEFAULT_READER_MODE = 'basic'
 
@@ -25,10 +27,17 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
     """
     Load all the datasets specified by the config.
     """
-    if reader_mode == GAN_READER_MODE:
-        reading_list = ["train_dx_path", "train_dy_path", "validation_data_path", "test_data_path", "vocab_src_path"]
+    if reader_mode == GAN_READER_MODE or reader_mode == NYT_READER_MODE:
+        reading_list = ["train_dx_path", 
+                        "train_dy_path", 
+                        "validation_data_path", 
+                        "test_data_path", "vocab_src_path"]
+        if reader_mode == GAN_READER_MODE:
+            reading_list += ["train_dy_context_path", "train_dy_appendix_path"]
     else:
-        reading_list = ["train_data_path", "validation_data_path", "test_data_path", "vocab_src_path"]
+        reading_list = ["train_data_path", 
+                        "validation_data_path", 
+                        "test_data_path", "vocab_src_path"]
 
     for data_name in reading_list:
         data_path = params.get(data_name, None)
@@ -43,7 +52,7 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         logger.info("Using a separate dataset reader to load validation and test data.")
         validation_and_test_dataset_reader = DatasetReader.from_params(validation_dataset_reader_params)
     
-    if reader_mode == GAN_READER_MODE:
+    if reader_mode == GAN_READER_MODE or reader_mode == NYT_READER_MODE:
         train_dx_path = params.pop('train_dx_path')
         logger.info("Reading training data of domain x from %s", train_dx_path)
         train_dx_data = dataset_reader.read(train_dx_path)
@@ -52,6 +61,20 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         logger.info("Reading training data of domain y from %s", train_dy_path)
         train_dy_data = dataset_reader.read(train_dy_path)
 
+        if reader_mode == NYT_READER_MODE:
+            train_dy_context_path = params.pop('train_dy_context_path') 
+            train_dy_appendix_path = params.pop('train_dy_appendix_path')
+            logger.info("Reading training (nytimes.context ) data of domain y from %s", train_dy_context_path)
+            logger.info("Reading training (nytimes.appendix) data of domain y from %s", train_dy_appendix_path)
+            
+            nytimes_reader = DatasetReader.from_params(params.pop('nytimes_reader'))
+            train_dy_nyt_data = nytimes_reader._read(train_dy_context_path, 
+                                                     train_dy_appendix_path, 
+                                                     appendix_type='nyt_learn')
+            train_dy_nyt_data = ensure_list(train_dy_nyt_data)
+            
+            train_dy_data += train_dy_nyt_data # combine
+        
         datasets: Dict[str, Iterable[Instance]] = {"train_dx": train_dx_data,
                                                    "train_dy": train_dy_data}
     else:
@@ -77,8 +100,11 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
     if vocab_src_path is not None:
         logger.info("Reading vocab source data from %s", vocab_src_path)
         vocab_data = validation_and_test_dataset_reader.read(vocab_src_path)
-        datasets["vocab"] = vocab_data
+        
+        if reader_mode == NYT_READER_MODE:
+            vocab_data += train_dy_nyt_data
 
+        datasets["vocab"] = vocab_data
     return datasets
 
 def rescale_gradients(model: Model, 

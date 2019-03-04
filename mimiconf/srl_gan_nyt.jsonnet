@@ -15,15 +15,25 @@
         }
     }
   },
-  "reader_mode": "srl_gan",
+  "nytimes_reader": {
+    "type":"conllx_unlabeled",
+    "feature_labels": ["pos", "dep"],
+    "move_preposition_head": false,
+    "instance_type": "srl_gan",
+    "token_indexers": {
+        "elmo": {
+            "type": "elmo_characters"
+        }
+    }
+  },
+  "reader_mode": "srl_nyt",
   "dis_param_name": "srl_encoder",
   
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
-  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
+  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytimeset/nytimes.45.lemma.part0-1",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytimeset/nytimes.verb.picked.part0-1",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
-  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
@@ -44,7 +54,7 @@
         "lemmas": {
             "type": "embedding",
             "embedding_dim": 300,
-            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.300.20.vec.c2009",
+            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.300.20.vec.c-nyt",
             "vocab_namespace": "lemmas",
             "trainable": false 
         }
@@ -110,12 +120,12 @@
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
     "cuda_device": 3,
-    "dis_min_loss": 0.45,
+    "dis_min_loss": 0.35,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
     "gen_pretraining": -1, 
     "dis_loss_scalar": 0.05,
-    "gen_loss_scalar": 5.0,
+    "gen_loss_scalar": 1.0,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

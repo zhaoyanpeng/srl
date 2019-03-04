@@ -83,7 +83,8 @@ class TrainerPieces(NamedTuple):
         else:
             validation_iterator = None
         
-        if reader_mode == training_util.GAN_READER_MODE:
+        if reader_mode == training_util.GAN_READER_MODE or \
+            reader_mode == training_util.NYT_READER_MODE:
             train_dx_data = all_datasets['train_dx']
             train_dy_data = all_datasets['train_dy']
             train_data = None
