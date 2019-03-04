@@ -31,6 +31,7 @@ class TrainerPieces(NamedTuple):
     validation_dataset: Iterable[Instance]
     test_dataset: Iterable[Instance]
     validation_iterator: DataIterator
+    rec_in_training: bool
     params: Params
     dis_param_name: str # FIX ME: better be list
 
@@ -94,6 +95,9 @@ class TrainerPieces(NamedTuple):
             train_dx_data = train_dy_data = None
             discriminator_param_name = None
         
+        # do not compute reconstruction loss when input data is not necessarily labeled
+        rec_in_training = not params.pop("add_unlabeled_noun", False)
+        
         validation_data = all_datasets.get('validation')
         test_data = all_datasets.get('test')
 
@@ -115,4 +119,4 @@ class TrainerPieces(NamedTuple):
         return TrainerPieces(model, iterator,
                              train_data, train_dx_data, train_dy_data,
                              validation_data, test_data, validation_iterator, 
-                             trainer_params, discriminator_param_name)
+                             rec_in_training, trainer_params, discriminator_param_name)

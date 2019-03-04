@@ -81,6 +81,7 @@ class GanSrlTrainer(Trainer):
                  validation_iterator: DataIterator = None,
                  shuffle: bool = True,
                  num_epochs: int = 20,
+                 rec_in_training = False,
                  dis_min_loss: float = -1.,
                  dis_skip_nepoch: int = -1,
                  gen_skip_nepoch: int = -1, 
@@ -147,6 +148,7 @@ class GanSrlTrainer(Trainer):
         if histogram_interval is not None:
             self._tensorboard.enable_activation_logging(self.model)
         
+        self.rec_in_training = rec_in_training
         self.dis_min_loss = dis_min_loss
         self.dis_skip_nepoch = dis_skip_nepoch
         self.gen_skip_nepoch = gen_skip_nepoch
@@ -359,13 +361,13 @@ class GanSrlTrainer(Trainer):
                 gen_loss, rec_loss = self.batch_loss(batch, 
                                           for_training=True, 
                                           retrive_generator_loss=True,
-                                          reconstruction_loss=True,
+                                          reconstruction_loss=self.rec_in_training,
                                           only_reconstruction=False,
                                           peep_prediction=peep)
                 if torch.isnan(gen_loss):
                     raise ValueError("nan loss encountered")
-                if torch.isnan(rec_loss):
-                    raise ValueError("nan loss encountered")
+                if self.rec_in_training and torch.isnan(rec_loss):
+                        raise ValueError("nan loss encountered")
                 #print('----------------------0. model.temperature is {}'.format(self.model.temperature.item()))
                 
                 # different methods of pre-training the generator, this will be switched 
@@ -401,10 +403,10 @@ class GanSrlTrainer(Trainer):
                 dis_loss, rec_loss = self.batch_loss(batch, 
                                                  for_training=True, 
                                                  retrive_generator_loss=False,
-                                                 reconstruction_loss=True)
+                                                 reconstruction_loss=self.rec_in_training)
                 if torch.isnan(dis_loss):
                     raise ValueError("nan loss encountered")
-                if torch.isnan(rec_loss):
+                if self.rec_in_training and torch.isnan(rec_loss):
                     raise ValueError("nan loss encountered")
                  
                 d_loss = dis_loss.item() 
@@ -465,7 +467,8 @@ class GanSrlTrainer(Trainer):
                 self._tensorboard.log_learning_rates(self.model, self.optimizer_dis)
 
                 self._tensorboard.add_train_scalar("loss/loss_train", metrics["loss"])
-                self._tensorboard.add_train_scalar("loss/rec_loss_train", metrics["rec_loss"])
+                if "rec_loss" in metrics:
+                    self._tensorboard.add_train_scalar("loss/rec_loss_train", metrics["rec_loss"])
                 self._tensorboard.log_metrics({"epoch_metrics/" + k: v for k, v in metrics.items()})
 
             if self._tensorboard.should_log_histograms_this_batch():
@@ -676,6 +679,7 @@ class GanSrlTrainer(Trainer):
                                train_dx_data = pieces.train_dx_dataset,
                                train_dy_data = pieces.train_dy_dataset,
                                validation_data = pieces.validation_dataset,
+                               rec_in_training = pieces.rec_in_training, 
                                params = pieces.params,
                                validation_iterator = pieces.validation_iterator,
                                discriminator_param_name=pieces.dis_param_name)
@@ -691,6 +695,7 @@ class GanSrlTrainer(Trainer):
                     train_dx_data: Iterable[Instance],
                     train_dy_data: Iterable[Instance],
                     validation_data: Optional[Iterable[Instance]],
+                    rec_in_training: bool,
                     params: Params,
                     validation_iterator: DataIterator = None,
                     discriminator_param_name: str = None) -> 'Trainer':
@@ -711,6 +716,7 @@ class GanSrlTrainer(Trainer):
         dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
         dis_min_loss = params.pop("dis_min_loss", -1.)
+
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -775,6 +781,7 @@ class GanSrlTrainer(Trainer):
                    validation_iterator=validation_iterator,
                    shuffle=shuffle,
                    num_epochs=num_epochs,
+                   rec_in_training = rec_in_training,
                    dis_min_loss = dis_min_loss, 
                    dis_skip_nepoch = dis_skip_nepoch,
                    gen_skip_nepoch = gen_skip_nepoch,

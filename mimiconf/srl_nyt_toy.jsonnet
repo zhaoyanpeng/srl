@@ -18,11 +18,13 @@
   },
   "reader_mode": "srl_nyt",
   "dis_param_name": "srl_encoder",
+  "add_unlabeled_noun": true,
   
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
   "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytimeset/nytimes.45.lemma.small",
   "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytimeset/nytimes.verb.picked.small",
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytimeset/nytimes.noun.picked.small",
   //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/bitgan/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -114,11 +116,11 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 2 
+    "batch_size": 1 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 2,
+    "num_epochs": 1,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
@@ -126,7 +128,7 @@
     "cuda_device": 3,
     "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
-    "gen_skip_nepoch": 1,
+    "gen_skip_nepoch": 0,
     "gen_pretraining": -1,  
     "dis_loss_scalar": 0.01,
     "gen_loss_scalar": 5.0,
