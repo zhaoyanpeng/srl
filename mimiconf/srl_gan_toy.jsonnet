@@ -11,7 +11,7 @@
     "instance_type": "srl_gan"
     },
   "reader_mode": "srl_gan",
-  "dis_param_name": "srl_encoder",
+  "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
   
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",

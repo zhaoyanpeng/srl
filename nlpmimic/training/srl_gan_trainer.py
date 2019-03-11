@@ -698,7 +698,7 @@ class GanSrlTrainer(Trainer):
                     rec_in_training: bool,
                     params: Params,
                     validation_iterator: DataIterator = None,
-                    discriminator_param_name: str = None) -> 'Trainer':
+                    discriminator_param_name: List[str] = []) -> 'Trainer':
         # pylint: disable=arguments-differ
         patience = params.pop_int("patience", None)
         validation_metric = params.pop("validation_metric", "-loss")
@@ -733,7 +733,12 @@ class GanSrlTrainer(Trainer):
         dis_param_names = []
         for n, p in model.named_parameters():
             if p.requires_grad:
-                if discriminator_param_name in n:
+                found = False
+                for key in discriminator_param_name:
+                    if key in n:
+                        found = True
+                        break
+                if found:
                     dis_param_names.append(n) 
                     dis_params.append([n, p])
                 else:

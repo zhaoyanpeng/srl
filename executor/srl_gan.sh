@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_gan_c_5.05_t1_fixed_flip_0.45"
+model_name="srl_gan_c_1.5_t1_fixed_flip_0.4r"
 param_name="srl_gan_old.jsonnet"
 model_path=$droot/model
 
@@ -21,9 +21,9 @@ if [ $flag = "remove" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf
 
-    nohup allennlp train $param_path/$param_name -s $this_model --include-package $library > $log_file 2>&1 &
+    nohup python -m allennlp.run train $param_path/$param_name -s $this_model --include-package $library > $log_file 2>&1 &
 elif [ $flag = "recover" ]; then
-    nohup allennlp train $param_path/$param_name -s $this_model -r --include-package $library >> $log_file 2>&1 &
+    nohup python -m allennlp.run train $param_path/$param_name -s $this_model -r --include-package $library >> $log_file 2>&1 &
 elif [ $flag = "tune" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf

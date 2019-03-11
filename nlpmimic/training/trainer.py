@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Iterable, NamedTuple
+from typing import List, Iterable, NamedTuple
 
 from allennlp.common import Params
 from allennlp.common.util import get_frozen_and_tunable_parameter_names
@@ -33,7 +33,7 @@ class TrainerPieces(NamedTuple):
     validation_iterator: DataIterator
     rec_in_training: bool
     params: Params
-    dis_param_name: str # FIX ME: better be list
+    dis_param_name: List[str] 
 
     @staticmethod
     def from_params(params: Params, serialization_dir: str, recover: bool = False) -> 'TrainerPieces':
@@ -93,7 +93,7 @@ class TrainerPieces(NamedTuple):
         else:
             train_data = all_datasets['train']
             train_dx_data = train_dy_data = None
-            discriminator_param_name = None
+            discriminator_param_name = [] 
         
         # do not compute reconstruction loss when input data is not necessarily labeled
         rec_in_training = not params.pop("add_unlabeled_noun", False)
