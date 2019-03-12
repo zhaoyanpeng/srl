@@ -14,6 +14,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s
 
 from allennlp.commands import main  # pylint: disable=wrong-import-position
 from nlpmimic.commands.srler import Srler
+from nlpmimic.commands.boost import Boost
 from nlpmimic.commands.archive import Archive
 from nlpmimic.commands.srler_nyt import SrlerNyt 
 
@@ -21,6 +22,7 @@ from nlpmimic.commands.srler_nyt import SrlerNyt
 if __name__ == "__main__":
     subcommand_overrides = {
             "srler": Srler(),
+            "boost": Boost(),
             "archive": Archive(),
             "srler_nyt": SrlerNyt()
     }

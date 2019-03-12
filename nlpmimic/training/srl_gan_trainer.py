@@ -539,12 +539,17 @@ class GanSrlTrainer(Trainer):
 
         return val_loss, batches_this_epoch
 
-    def train(self) -> Dict[str, Any]:
+    def train(self, boost: bool = False) -> Dict[str, Any]:
         """
         Trains the supplied model with the supplied parameters.
         """
         try:
-            epoch_counter = self._restore_checkpoint()
+            boost_signal = False
+            if boost:
+                boost_signal = self.load_model() 
+                epoch_counter = 0
+            if not boost_signal: 
+                epoch_counter = self._restore_checkpoint()
         except RuntimeError:
             traceback.print_exc()
             raise ConfigurationError("Could not recover training from the checkpoint.  Did you mean to output to "
@@ -638,6 +643,17 @@ class GanSrlTrainer(Trainer):
             self.model.load_state_dict(best_model_state)
 
         return metrics
+
+    def load_model(self) -> bool:
+        best_model_state = self._checkpointer.best_model_state()
+        if best_model_state:
+            logger.info("Loading the best model as the initial point.")
+            self.model.load_state_dict(best_model_state)
+            return True
+        else:
+            logger.info("Could not load the best model. "
+                        "Train the model from the latest checkpoint.")
+            return False
 
     def archive(self) -> Dict[str, Any]:
         """ 
