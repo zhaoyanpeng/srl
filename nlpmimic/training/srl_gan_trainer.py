@@ -242,8 +242,11 @@ class GanSrlTrainer(Trainer):
                 else:
                     loss = output_dict["dis_loss"] # loss of the discriminator
                 loss += self.model.get_regularization_penalty()
+
+                kl_loss = output_dict["kl_loss"]
             else:
                 loss = None
+                kl_loss = None
             if reconstruction_loss: # can be added into compulsory loss in semi-supervised setting
                 rec_loss = output_dict["rec_loss"]
             else:
@@ -259,7 +262,7 @@ class GanSrlTrainer(Trainer):
                 raise RuntimeError("The model you are trying to optimize does not contain a"
                                    " '*loss' key in the output of model.forward(inputs).")
             loss = rec_loss = None
-        return loss, rec_loss
+        return loss, rec_loss, kl_loss
     
     def rescale_gradients(self, parameter_names: List[str]) -> Optional[float]:
         return mimic_training_util.rescale_gradients(self.model, parameter_names, self._grad_norm)
@@ -358,7 +361,7 @@ class GanSrlTrainer(Trainer):
             if epoch >= self.gen_skip_nepoch:
                 # update generator
                 self.optimizer.zero_grad()
-                gen_loss, rec_loss = self.batch_loss(batch, 
+                gen_loss, rec_loss, kl_loss = self.batch_loss(batch, 
                                           for_training=True, 
                                           retrive_generator_loss=True,
                                           reconstruction_loss=self.rec_in_training,
@@ -381,14 +384,17 @@ class GanSrlTrainer(Trainer):
                 else:                              # unsupervised
                     #logger.info('------un-supervised')
                     gen_loss *= self.gen_loss_scalar 
+                    if kl_loss is not None:
+                        gen_loss += kl_loss
                     gen_loss.backward()
-                
+
                 gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
 
                 g_loss = gen_loss.item() / self.gen_loss_scalar
                 train_loss += gen_loss.item()
             else:
                 g_loss = None
+                kl_loss = None
                 gen_batch_grad_norm = None
             #logger.info('')
             #logger.info('------------------------optimizing the generator')
@@ -400,7 +406,7 @@ class GanSrlTrainer(Trainer):
 
                 # update discriminator
                 self.optimizer_dis.zero_grad()
-                dis_loss, rec_loss = self.batch_loss(batch, 
+                dis_loss, rec_loss, kl_loss = self.batch_loss(batch, 
                                                  for_training=True, 
                                                  retrive_generator_loss=False,
                                                  reconstruction_loss=self.rec_in_training)
@@ -446,6 +452,7 @@ class GanSrlTrainer(Trainer):
             metrics = mimic_training_util.get_metrics(self.model, 
                                                       train_loss, 
                                                       batches_this_epoch,
+                                                      kl_loss = kl_loss,
                                                       generator_loss = g_loss,
                                                       discriminator_loss = d_loss,
                                                       reconstruction_loss = reconstruction_loss)
@@ -518,7 +525,7 @@ class GanSrlTrainer(Trainer):
         val_loss = 0
         for batch in val_generator_tqdm:
 
-            _, loss = self.batch_loss(batch, 
+            _, loss, _ = self.batch_loss(batch, 
                                       for_training=False,
                                       retrive_generator_loss=False, # dead; active only during training
                                       reconstruction_loss=True, # implying gold labels exist

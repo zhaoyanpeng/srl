@@ -33,6 +33,7 @@ class GanSemanticRoleLabeler(Model):
                  embedding_dropout: float = 0.,
                  use_label_indicator: bool = False,
                  zero_null_lemma_embedding: bool = False, 
+                 regularized_labels: List[str] = None,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
@@ -69,7 +70,17 @@ class GanSemanticRoleLabeler(Model):
             for idx in range(self.num_classes):
                 label_indicator[idx, idx] = 1.
             self.label_indicator = torch.nn.Embedding.from_pretrained(label_indicator, freeze=True)
-
+        
+        self.regularized_labels = regularized_labels
+        if self.regularized_labels:
+            """
+            label_indexes = [self.vocab.get_token_index(label, namespace="srl_tags") 
+                            for label in self.regularized_labels] 
+            label_selector = torch.zeros(self.num_classes)
+            label_selector[label_indexes] = 1. 
+            self.label_selector = torch.nn.Parameter(label_selector, requires_grad=False)
+            """
+            pass
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
@@ -174,11 +185,11 @@ class GanSemanticRoleLabeler(Model):
             list_lemmas, list_tokens, list_pos_tags, list_head_ids, list_predicates, list_predicate_indexes = \
                                 zip(*[(x["lemmas"], x["tokens"], x["pos_tags"], x["head_ids"], \
                                     x["predicate"], x["predicate_index"], ) for x in metadata])
-        
-        
+         
         if self.training:
-            noun_labels, embedded_noun_labels = self._argmax_logits(class_probabilities, used_mask)
+            noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+            output_dict["kl_loss"] = kl_loss
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
             full_label_masks = mask.clone() # srl label masks
@@ -425,12 +436,28 @@ class GanSemanticRoleLabeler(Model):
             label_indicator = self.label_indicator(max_likelihood_sequence)    
             embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
 
+        if self.regularized_labels:
+            divider = 1. / torch.sum(mask, -1).float() 
+            class_probs = class_probs * mask.unsqueeze(-1).float() 
+            batch_probs = torch.sum(class_probs, 1)
+            
+            batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
+
+            kl_loss = torch.log(batch_probs) * batch_probs
+            kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
+            kl_loss = kl_loss[:, 1:] # discard the loss for empty labels
+
+            loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level
+            #loss = torch.mean(kl_loss[kl_loss > 0]) # loss at token level 
+        else:
+            loss = None 
+
         #print('\nembedded_labels: {}\n'.format(embedded_labels))
         #print('\nembedded_size: {}\n'.format(embedded_labels.size()))
         #print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
         #import sys
         #sys.exit(0)
-        return max_likelihood_sequence, embedded_labels 
+        return max_likelihood_sequence, embedded_labels, loss 
 
 
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
