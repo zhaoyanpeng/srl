@@ -33,17 +33,17 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         super(GanSrlDiscriminator, self).__init__()
         
         self.module_choice = module_choice
+        
+        # Projection layer: always num_filters -> projection_dim
+        self._projection = torch.nn.Linear(embedding_dim, projected_dim, bias=True)
+        self._projection.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / embedding_dim))
+        self._projection.bias.data.fill_(0.0)
+        
+        self._logits = torch.nn.Linear(projected_dim, 1, bias=True)
+        self._logits.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / projected_dim))
+        self._logits.bias.data.fill_(0.0)
 
         if self.module_choice == 'c':
-            # Projection layer: always num_filters -> projection_dim
-            self._projection = torch.nn.Linear(embedding_dim, projected_dim, bias=True)
-            self._projection.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / embedding_dim))
-            self._projection.bias.data.fill_(0.0)
-            
-            self._logits = torch.nn.Linear(projected_dim, 1, bias=True)
-            self._logits.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / projected_dim))
-            self._logits.bias.data.fill_(0.0)
-            
             self._gru = torch.nn.GRU(embedding_dim, hidden_size, num_layer, batch_first=True, bidirectional=True)
             
             self._attent = torch.nn.Linear(2 * hidden_size, attent_size, bias=True) 
@@ -60,15 +60,15 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                 self._activation = torch.nn.functional.relu
             else:
                 raise ConfigurationError(f"unknown activation {activation}")
-            
+        elif self.module_choice == 'd':
             # Projection layer: always num_filters -> projection_dim
-            self._projection = torch.nn.Linear(embedding_dim, projected_dim, bias=True)
-            self._projection.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / embedding_dim))
-            self._projection.bias.data.fill_(0.0)
+            self._projection_gate = torch.nn.Linear(embedding_dim, projected_dim, bias=True)
+            self._projection_gate.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / embedding_dim))
+            self._projection_gate.bias.data.fill_(0.0)
             
-            self._logits = torch.nn.Linear(projected_dim, 1, bias=True)
-            self._logits.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / projected_dim))
-            self._logits.bias.data.fill_(0.0)
+            self._logits_gate = torch.nn.Linear(projected_dim, 1, bias=True)
+            self._logits_gate.weight.data.normal_(mean=0.0, std=np.sqrt(1.0 / projected_dim))
+            self._logits_gate.bias.data.fill_(0.0)
         else:
             pass
 
@@ -92,11 +92,15 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             logits = self.model_b(tokens, mask)
         elif self.module_choice == 'c':
             logits = self.model_c(tokens, mask)
+        elif self.module_choice == 'd':
+            logits = self.model_d(tokens, mask)
         else:
             raise ConfigurationError(f"unknown discriminator type: {self.module_choice}")
         return logits 
 
     def model_c(self, tokens: torch.Tensor, mask: torch.Tensor = None):
+        """ Average-based model outputs could be dominated by non-argument labels.
+        """
         logits = torch.tanh(self._projection(tokens))
         individual_probs = torch.sigmoid(self._logits(logits))
         #print(individual_probs.size())
@@ -131,17 +135,44 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         probs.clamp_(max = 1.0) # fix float precision problem
         return probs
     
+    def model_d(self, tokens: torch.Tensor, mask: torch.Tensor = None):
+        """ Gated probabilities without correlations.
+        """
+        _, length, _ = tokens.size()
+        #tokens = tokens * mask.unsqueeze(-1).float() 
+        
+        # (batch_size, length, dim) -> (batch_size, length, projected_dim)
+        logits = torch.tanh(self._projection(tokens))
+        # (batch_size, length, 1)
+        individual_probs = torch.sigmoid(self._logits(logits))
+        
+        # (batch_size, length, dim) -> (batch_size, length, projected_dim)
+        logits_gate = torch.tanh(self._projection_gate(tokens))
+        # (batch_size, length, 1)
+        individual_gates = torch.sigmoid(self._logits_gate(logits_gate))
+
+        # weighted and masked (batch_size, length, 1)
+        weighted_probs = individual_probs * individual_gates * mask.unsqueeze(-1).float()
+        
+        # average to reduce length bias 
+        divider = 1. / torch.sum(mask, -1).float()
+        divider = divider.unsqueeze(-1).unsqueeze(-1).expand(-1, length, -1)
+
+        # -- * (batch_size, length, 1) -> (batch_size, 1, 1) -> (batch_size,)
+        logits = torch.bmm(weighted_probs.transpose(1, 2), divider)
+        probs = torch.sigmoid(logits).squeeze(-1).squeeze(-1)
+        return probs 
+
     def model_b(self, tokens: torch.Tensor, mask: torch.Tensor = None):
+        """ Average logits from projecting feature vectors.
+        """
         _, length, _ = tokens.size()
         tokens = tokens * mask.unsqueeze(-1).float() 
         
         # (batch_size, length, dim) -> (batch_size, length, projected_dim)
-        projected_tokens = self._projection(tokens)
-        projected_tokens = self._activation(projected_tokens)
-        
-        # (batch_size, length, dim) -> (batch_size, length, 1)
+        projected_tokens = self._activation(self._projection(tokens))
+        # (batch_size, length, projected_dim) -> (batch_size, length, 1)
         all_logits = self._logits(projected_tokens)
-        all_logits = self._activation(all_logits)
 
         divider = 1. / torch.sum(mask, -1).float()
         divider = divider.unsqueeze(-1).unsqueeze(-1).expand(-1, length, -1)
@@ -151,17 +182,17 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         return probs 
     
     def model_a(self, tokens: torch.Tensor, mask: torch.Tensor = None):
+        """ Average feature vectors.
+        """
         # reset masks with 1. if there are NOT any srl labels 
         #divider = torch.sum(mask, -1).float()
         #zero_indexes = divider == 0.
         #mask[zero_indexes, :] = 1.
-        
         _, length, _ = tokens.size()
         tokens = tokens * mask.unsqueeze(-1).float() 
         
         # (batch_size, length, dim) -> (batch_size, length, projected_dim)
-        projected_tokens = self._projection(tokens)
-        projected_tokens = self._activation(projected_tokens)
+        projected_tokens = self._activation(self._projection(tokens))
         
         divider = 1. / torch.sum(mask, -1).float()
         divider = divider.unsqueeze(-1).unsqueeze(-1).expand(-1, length, -1)

@@ -78,7 +78,7 @@
       "projected_dim": 200,
       "hidden_size": 200,
       "attent_size": 200,
-      "num_layer": 1
+      "num_layer": 4 
     },
     "initializer": [
       [
@@ -110,7 +110,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 2,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
