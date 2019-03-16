@@ -33,6 +33,7 @@ class GanSemanticRoleLabeler(Model):
                  embedding_dropout: float = 0.,
                  use_label_indicator: bool = False,
                  zero_null_lemma_embedding: bool = False, 
+                 label_loss_type: str = 'reverse_kl',
                  regularized_labels: List[str] = None,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -71,6 +72,7 @@ class GanSemanticRoleLabeler(Model):
                 label_indicator[idx, idx] = 1.
             self.label_indicator = torch.nn.Embedding.from_pretrained(label_indicator, freeze=True)
         
+        self.label_loss_type = label_loss_type
         self.regularized_labels = regularized_labels
         if self.regularized_labels:
             """
@@ -437,14 +439,21 @@ class GanSemanticRoleLabeler(Model):
             embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
 
         if self.regularized_labels:
-            divider = 1. / torch.sum(mask, -1).float() 
             class_probs = class_probs * mask.unsqueeze(-1).float() 
             batch_probs = torch.sum(class_probs, 1)
             
             batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
 
             kl_loss = torch.log(batch_probs) * batch_probs
-            kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
+            
+            if self.label_loss_type == 'reverse_kl':
+                # (k/n) ln ((k/n)/(1/n))
+                divider = 1. / torch.sum(mask, -1).float() 
+                kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
+            elif self.label_loss_type == 'unscale_kl':
+                pass # k ln ((k/n)/(1/n))  
+            else:
+                pass
             kl_loss = kl_loss[:, 1:] # discard the loss for empty labels
 
             loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level

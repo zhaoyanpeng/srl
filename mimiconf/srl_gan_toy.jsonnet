@@ -64,7 +64,7 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
-      "module_choice": "c",
+      "module_choice": "d",
       //"embedding_dim": 6,
       "embedding_dim": 15,
       "projected_dim": 4,
@@ -96,6 +96,8 @@
         //}
       //]
     ],
+    "label_loss_type": "unscale_kl",
+    "regularized_labels": ["O"],
     "binary_feature_dim": 2, 
     "temperature": 0.01,
     "fixed_temperature": true,
@@ -110,18 +112,19 @@
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 1,
+    "num_epochs": 2,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 0,
     "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
-    "gen_skip_nepoch": 1,
+    "gen_skip_nepoch": 0,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.01,
-    "gen_loss_scalar": 5.0,
+    "dis_loss_scalar": 0.05,
+    "gen_loss_scalar": 1.0,
+    "kld_loss_scalar": 0.5,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

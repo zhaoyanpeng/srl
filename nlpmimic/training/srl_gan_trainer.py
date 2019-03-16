@@ -88,6 +88,7 @@ class GanSrlTrainer(Trainer):
                  gen_pretraining: int = -1,
                  dis_loss_scalar: float = 1.,
                  gen_loss_scalar: float = 1.,
+                 kld_loss_scalar: float = 1.,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -132,6 +133,7 @@ class GanSrlTrainer(Trainer):
         self.dis_param_names = dis_param_names
         self.gen_loss_scalar = gen_loss_scalar
         self.dis_loss_scalar = dis_loss_scalar
+        self.kld_loss_scalar = kld_loss_scalar
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
@@ -375,6 +377,7 @@ class GanSrlTrainer(Trainer):
                 
                 # different methods of pre-training the generator, this will be switched 
                 # to the unsupervised training as soon as we start training the discriminator
+                g_loss = gen_loss.item()
                 if self.gen_pretraining > 0:       # semi-supervised 
                     #logger.info('------supervised')
                     gen_loss = gen_loss + rec_loss
@@ -385,12 +388,11 @@ class GanSrlTrainer(Trainer):
                     #logger.info('------un-supervised')
                     gen_loss *= self.gen_loss_scalar 
                     if kl_loss is not None:
-                        gen_loss += kl_loss
+                        gen_loss += self.kld_loss_scalar * kl_loss
+                        kl_loss = kl_loss.item()
                     gen_loss.backward()
 
                 gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
-
-                g_loss = gen_loss.item() / self.gen_loss_scalar
                 train_loss += gen_loss.item()
             else:
                 g_loss = None
@@ -738,6 +740,7 @@ class GanSrlTrainer(Trainer):
         gen_pretraining = params.pop("gen_pretraining", -1)
         dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
+        kld_loss_scalar = params.pop("kld_loss_scalar", 1.)
         dis_min_loss = params.pop("dis_min_loss", -1.)
 
 
@@ -816,6 +819,7 @@ class GanSrlTrainer(Trainer):
                    gen_pretraining = gen_pretraining,
                    dis_loss_scalar = dis_loss_scalar,
                    gen_loss_scalar = gen_loss_scalar,
+                   kld_loss_scalar = kld_loss_scalar,
                    serialization_dir=serialization_dir,
                    cuda_device=cuda_device,
                    grad_norm=grad_norm,

@@ -78,7 +78,7 @@
       "projected_dim": 200,
       "hidden_size": 200,
       "attent_size": 200,
-      "num_layer": 4 
+      "num_layer": 1 
     },
     "initializer": [
       [
@@ -88,6 +88,7 @@
         }
       ]
     ],
+    "label_loss_type": "unscale_kl",
     "regularized_labels": ["O"],
     "binary_feature_dim": 100, 
     "temperature": 1,
@@ -110,13 +111,14 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
-    "dis_min_loss": 0.0,
+    "cuda_device": 1,
+    "dis_min_loss": 0.4,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
     "gen_pretraining": -1, 
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
+    "kld_loss_scalar": 0.8,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95
