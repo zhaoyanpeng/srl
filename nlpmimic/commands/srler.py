@@ -137,7 +137,7 @@ class _PredictManager:
                                                   head_ids,
                                                   predicate)                                           
         if restore_head:
-            prediction.restore_preposition_head('_')
+            prediction.restore_preposition_head_general('_')
         return prediction.format()
     
     def _predict_instances(self, 
@@ -180,18 +180,20 @@ class _PredictManager:
                     self._gold_output_file.write(gold_input.format() + '\n')
         else:
             raise ConfigurationError("Could you please provide a proper dataset reader?")
-        #print('move_head: {}'.format(self._dataset_reader.move_preposition_head))
+        print('move_head: {}'.format(self._dataset_reader.move_preposition_head))
 
     def run(self, restore_head: bool = True) -> None:
         has_reader = self._dataset_reader is not None
         if has_reader:
+            self._dataset_reader.move_preposition_head = restore_head 
             for batch in lazy_groups_of(self._get_instance_data(), self._batch_size):
                 for gold_instance, result in zip(batch, self._predict_instances(batch, restore_head)):
-                    gold_input = Conll2009Sentence.instance(gold_instance)
-                    if restore_head:
-                        gold_input.restore_preposition_head('_')
+                    #gold_input = Conll2009Sentence.instance(gold_instance)
+                    #if restore_head:
+                    #    gold_input.restore_preposition_head('_')
                     #self._gold_output_file.write(gold_input.format() + '\n')
                     self._pred_output_file.write(result + '\n')
+            print('move_head: {}'.format(self._dataset_reader.move_preposition_head))
         else:
             raise ConfigurationError("Could you please provide a proper dataset reader?")
     

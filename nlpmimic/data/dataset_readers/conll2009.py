@@ -1,4 +1,4 @@
-from typing import Any, Type, TypeVar, Dict, List, Sequence, Iterable, Optional, Tuple
+from typing import Any, Type, TypeVar, Set, Dict, List, Sequence, Iterable, Optional, Tuple
 import itertools 
 import inspect 
 import logging
@@ -197,7 +197,6 @@ class Conll2009Sentence:
                 else:
                     head_idx = idx
                 frames[head_idx] = label 
-            #print('\n{}\n{}\n{}\n'.format(idx, label, frames))
 
     def restore_preposition_head(self, empty_label: str = 'O') -> None:
         """ Restoring implies this Conll 2009 sentence has been moved before.
@@ -210,7 +209,77 @@ class Conll2009Sentence:
                 else:
                     head_idx = idx
                 frames[head_idx] = label
+    
+    def restore_preposition_head_cycle(self, empty_label: str = 'O') -> None:
+        """ Restoring implies this Conll 2009 sentence has been moved before.
+            This only considers the case where the predicate is also an argument.
+            In this case, we do not move back the argument.
+        """
+        for _, _, frames in self.srl_frames:
+            idx_predicate = self.predicate_indicators.index('Y')
+            for idx, label in enumerate(frames):
+                head_idx = self.head_ids[idx] - 1
+                same_idx = idx == idx_predicate
 
+                if label != empty_label and self.pos_tags[head_idx] == 'IN' and not same_idx:
+                    frames[idx] = empty_label
+                else:
+                    head_idx = idx
+                frames[head_idx] = label
+
+    def restore_preposition_head_general(self, empty_label: str = 'O') -> None:
+        """ Restoring implies this Conll 2009 sentence has been moved before.
+            We traverse all possible `IN` ancestors of the predicate and do not
+            allow its arguments to move back to any of the `IN` ancestors.
+        """
+        for _, _, frames in self.srl_frames:
+            idx_predicate = self.predicate_indicators.index('Y')
+            head_predicate = self.head_ids[idx_predicate]
+            
+            father_in_idxes = set()
+            nearest_in_root_idx = -1 
+            while head_predicate != 0:
+                head_idx = head_predicate - 1
+                if self.pos_tags[head_idx] == 'IN':
+                    nearest_in_root_idx = head_idx
+                    father_in_idxes.add(head_idx) 
+                head_predicate = self.head_ids[head_idx]
+
+            for idx, label in enumerate(frames):
+                head_idx = self.head_ids[idx] - 1
+                
+                if label != empty_label and \
+                    self.pos_tags[head_idx] == 'IN' and \
+                    head_idx not in father_in_idxes:
+                    frames[idx] = empty_label
+                else:
+                    head_idx = idx
+                frames[head_idx] = label
+
+    def restore_preposition_head_with_conditions(self, 
+                                                 start_pos: int, 
+                                                 constraints: Set[int], 
+                                                 empty_label: str = 'O') -> None:
+        """ Restoring implies this Conll 2009 sentence has been moved before.
+            Run `move_preposition_head` and then `restore_preposition_head`.
+            After that, we `diff` the original input and the restored file .
+            We parse the outputs of `diff` and record lines that do not need 
+            to be restored. This is stupid hard-coding. We still do not know
+            how to restore if the gold inputs are not available.
+        """
+        for _, _, frames in self.srl_frames:
+            start_line_num = start_pos + 1
+            for idx, label in enumerate(frames):
+                line_num = start_line_num + idx
+                head_idx = self.head_ids[idx] - 1
+                if label != empty_label and \
+                    self.pos_tags[head_idx] == 'IN' and \
+                    line_num not in constraints:
+                    frames[idx] = empty_label
+                else:
+                    head_idx = idx
+                frames[head_idx] = label
+        return start_pos + len(self.token_ids) + 1 
 
 @DatasetReader.register("conll2009")
 class Conll2009DatasetReader(DatasetReader):

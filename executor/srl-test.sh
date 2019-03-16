@@ -1,6 +1,9 @@
 
-pytest nlpmimic/tests/data/dataset_readers/conllx_dataset_reader_test.py  \
+pytest nlpmimic/tests/data/dataset_readers/srl_common_test.py  \
     -s --show-capture=no -p no:warnings -vv 
+
+#pytest nlpmimic/tests/data/dataset_readers/conllx_dataset_reader_test.py  \
+#    -s --show-capture=no -p no:warnings -vv 
 
 #pytest nlpmimic/tests/data/dataset_readers/srl_common_test.py \
 #    -s --show-capture=no -p no:warnings -vv 
