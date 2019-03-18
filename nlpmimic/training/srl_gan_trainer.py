@@ -81,7 +81,7 @@ class GanSrlTrainer(Trainer):
                  validation_iterator: DataIterator = None,
                  shuffle: bool = True,
                  num_epochs: int = 20,
-                 rec_in_training = False,
+                 rec_in_training: bool =  False,
                  dis_min_loss: float = -1.,
                  dis_skip_nepoch: int = -1,
                  gen_skip_nepoch: int = -1, 
@@ -89,6 +89,9 @@ class GanSrlTrainer(Trainer):
                  dis_loss_scalar: float = 1.,
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
+                 consecutive_update: bool = False,
+                 dis_max_nbatch: int = 0,
+                 gen_max_nbatch: int = 0,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -155,6 +158,10 @@ class GanSrlTrainer(Trainer):
         self.dis_skip_nepoch = dis_skip_nepoch
         self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
+        
+        self.consecutive_update = consecutive_update
+        self.dis_max_nbatch = dis_max_nbatch
+        self.gen_max_nbatch = gen_max_nbatch
         
         self.data_y_pivot = 0 # used in sampling y (verb) data
 
@@ -341,6 +348,8 @@ class GanSrlTrainer(Trainer):
         train_generator_tqdm = Tqdm.tqdm(train_generator,
                                          total=num_training_batches)
         bsize, cnt = 15, 0
+        gen_nbatch, dis_nbatch = 0, 0
+        optimize_gen, optimize_dis = True, True
 
         cumulative_batch_size = 0
         for batch in train_generator_tqdm:
@@ -360,7 +369,12 @@ class GanSrlTrainer(Trainer):
             #    print(inst['predicate'])
             #print()
             
-            if epoch >= self.gen_skip_nepoch:
+            if epoch >= self.gen_skip_nepoch and optimize_gen:
+                # optimize the module exclusively for a number of consecutive batches
+                if self.consecutive_update:
+                    optimize_dis = False
+                    gen_nbatch += 1
+
                 # update generator
                 self.optimizer.zero_grad()
                 gen_loss, rec_loss, kl_loss = self.batch_loss(batch, 
@@ -394,15 +408,20 @@ class GanSrlTrainer(Trainer):
 
                 gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
                 train_loss += gen_loss.item()
+                #logger.info('------------------------optimizing the generator {}'.format(gen_nbatch))
             else:
                 g_loss = None
                 kl_loss = None
                 gen_batch_grad_norm = None
             #logger.info('')
-            #logger.info('------------------------optimizing the generator')
             #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
-            if epoch >= self.dis_skip_nepoch: #and g_loss <= 0.3: # do optimize the discriminator
+            if epoch >= self.dis_skip_nepoch and optimize_dis: #and g_loss <= 0.3: # do optimize the discriminator
+                # optimize the module exclusively for a number of consecutive batches
+                if self.consecutive_update:
+                    optimize_gen = False
+                    dis_nbatch += 1
+
                 # reset the training of the generator to the unsupervised training
                 self.gen_pretraining = -1
 
@@ -433,7 +452,7 @@ class GanSrlTrainer(Trainer):
                 d_loss = dis_loss.item() / self.dis_loss_scalar 
                 """ 
                 train_loss += dis_loss.item()
-                #logger.info('------------------------optimizing the discriminator')
+                #logger.info('------------------------optimizing the discriminator {}'.format(dis_nbatch))
             else:
                 d_loss = None
                 dis_batch_grad_norm = None 
@@ -442,6 +461,15 @@ class GanSrlTrainer(Trainer):
             #if cnt >= 1:
             #    import sys
             #    sys.exit(0)
+            if gen_nbatch >= self.gen_max_nbatch:
+                optimize_gen = False
+                optimize_dis = True
+                gen_nbatch = 0
+
+            if dis_nbatch >= self.dis_max_nbatch:
+                optimize_dis = False
+                optimize_gen = True
+                dis_nbatch = 0
             
             if rec_loss is not None:
                 reconstruction_loss += rec_loss.item() 
@@ -743,6 +771,9 @@ class GanSrlTrainer(Trainer):
         kld_loss_scalar = params.pop("kld_loss_scalar", 1.)
         dis_min_loss = params.pop("dis_min_loss", -1.)
 
+        consecutive_update = params.pop("consecutive_update", False)
+        dis_max_nbatch = params.pop("dis_max_nbatch", 1)
+        gen_max_nbatch = params.pop("gen_max_nbatch", 1)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -820,6 +851,9 @@ class GanSrlTrainer(Trainer):
                    dis_loss_scalar = dis_loss_scalar,
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
+                   consecutive_update = consecutive_update,
+                   dis_max_nbatch = dis_max_nbatch,
+                   gen_max_nbatch = gen_max_nbatch,
                    serialization_dir=serialization_dir,
                    cuda_device=cuda_device,
                    grad_norm=grad_norm,
