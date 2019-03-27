@@ -40,6 +40,7 @@ class GraphSemanticRoleLabeler(Model):
                  residual_connection_layers: Dict[str, Any] = {'2': [0], '3': [0, 1]},
                  node_msg_dropout: float = 0.3,
                  residual_dropout: float = 0.3,
+                 aggregation_type: str = 'a',
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
@@ -102,7 +103,8 @@ class GraphSemanticRoleLabeler(Model):
                 layer_timesteps = layer_timesteps,
                 residual_connection_layers = residual_layers,
                 node_msg_dropout = node_msg_dropout,
-                residual_dropout = residual_dropout) 
+                residual_dropout = residual_dropout,
+                aggregation_type = aggregation_type) 
 
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.

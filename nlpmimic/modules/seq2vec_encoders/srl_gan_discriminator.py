@@ -67,13 +67,15 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                            layer_timesteps: List[int] = [2, 2, 2, 2],
                            residual_connection_layers: Dict[int, List[int]] = {2: [0], 3: [0, 1]},
                            node_msg_dropout: float = 0.3,
-                           residual_dropout: float = 0.3):
+                           residual_dropout: float = 0.3,
+                           aggregation_type: str = 'a'):
         self._gcn_hidden_dim = gcn_hidden_dim
         self._num_edge_types = num_edge_types
         self._layer_timesteps = layer_timesteps
         self._residual_connection_layers = residual_connection_layers
         self._node_msg_dropout = torch.nn.Dropout(node_msg_dropout)
         self._residual_dropout = torch.nn.Dropout(residual_dropout)
+        self._aggregation_type = aggregation_type
 
         self._residual_layers = []
         self._edge_function_layers = []
@@ -96,6 +98,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         
         self._trans = torch.nn.Linear(self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
         self._logit = torch.nn.Linear(self._gcn_hidden_dim, 1, bias=True)
+        if self._aggregation_type == 'b':
+            self._weight = torch.nn.Linear(self._gcn_hidden_dim, 1, bias=True)
 
     def multi_layer_gcn_loss(self, 
                              input_dict: Dict[str, torch.Tensor], 
@@ -258,11 +262,26 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         gate = torch.sigmoid(self._aggregation_gate(embedded_arguments))
         info = torch.tanh(self._aggregation_info(embedded_arguments))
 
-        wit = gate * info * node_mask.unsqueeze(-1).float()
-        wit = self._node_msg_dropout(torch.sum(wit, 1)) 
-        wit = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
-        
-        return wit.squeeze(-1)
+        # wit is the abstract representation of the graph
+        if self._aggregation_type == 'a': 
+            wit = gate * info * node_mask.unsqueeze(-1).float()
+            wit = self._node_msg_dropout(torch.sum(wit, 1)) 
+            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
+            probs = probs.squeeze(-1)
+        elif self._aggregation_type == 'b':
+            wit = gate * info * node_mask.unsqueeze(-1).float()
+            wit = torch.tanh(self._trans(wit))
+            # (batch_size, num_edges, 1)
+            wit_logits = torch.sigmoid(self._logit(wit)) 
+            # (batch_size, num_edges, 1)
+            wit_weight = self._weight(wit)
+            wit_weight = wit_weight.masked_fill(node_mask.unsqueeze(-1) == 0, -1e20)
+            wit_weight = F.softmax(wit_weight, 1)
+            # weighted vote 
+            probs = torch.bmm(wit_logits.transpose(1, 2), wit_weight)
+            probs = probs.squeeze(-1).squeeze(-1)
+            probs.clamp_(max = 1.0) # fix float precision problem
+        return probs 
 
     def initialize_single(self, 
                           embedding_dim: int, 
@@ -333,6 +352,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             logits = self.model_d(tokens, mask)
         elif self.module_choice == 'e':
             logits = self.model_e(tokens, mask)
+        elif self.module_choice == 'gcn':
+            logits = None 
         else:
             raise ConfigurationError(f"unknown discriminator type: {self.module_choice}")
         return logits 
