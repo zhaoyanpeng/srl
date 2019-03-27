@@ -8,20 +8,20 @@
     "type":"conll2009",
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
-    "instance_type": "srl_gan"
+    "instance_type": "srl_graph"
     },
   "reader_mode": "srl_gan",
   "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
   
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
-  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
+  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
+  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
   //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   //"datasets_for_vocab_creation": ["vocab"],
   "model": {
-    "type": "srl_gan",
+    "type": "srl_graph",
     "token_embedder": {
       "token_embedders": {
         "tokens": {
@@ -66,13 +66,14 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
-      "module_choice": "d",
+      "module_choice": "gcn",
       "embedding_dim": 6,
       //"embedding_dim": 15,
       "projected_dim": 4,
       "hidden_size": 2,
       "attent_size": 2,
-      "num_layer": 1
+      "num_layer": 1,
+      "num_model":0 
     },
     "initializer": [
       [
@@ -106,20 +107,26 @@
     "mask_empty_labels": false,
     //"use_label_indicator": true,
     "zero_null_lemma_embedding": true,
+     
+    "use_graph_srl_encoder": true,
+    "layer_timesteps": [2, 2, 2, 2],
+    "residual_connection_layers": {"2": [0], "3": [0, 1]},
+    "node_msg_dropout": 0.3,
+    "residual_dropout": 0.3,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 5 
+    "batch_size": 1 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 1,
+    "num_epochs": 2,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 1,
     "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -127,7 +134,7 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
-    "consecutive_update": true,
+    "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 4,
     "optimizer": {

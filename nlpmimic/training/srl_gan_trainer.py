@@ -363,6 +363,8 @@ class GanSrlTrainer(Trainer):
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
             
+            #if batches_this_epoch > 1:
+            #    break
             #print(batch) 
             #print()
             #for inst in batch['metadata']:

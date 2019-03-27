@@ -17,8 +17,8 @@ from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_deco
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
 
-@Model.register("srl_gan")
-class GanSemanticRoleLabeler(Model):
+@Model.register("srl_graph")
+class GraphSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  token_embedder: TextFieldEmbedder,
                  lemma_embedder: TextFieldEmbedder,
@@ -34,12 +34,17 @@ class GanSemanticRoleLabeler(Model):
                  use_label_indicator: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  label_loss_type: str = 'reverse_kl',
+                 use_graph_srl_encoder: bool = False,
                  regularized_labels: List[str] = None,
+                 layer_timesteps: List[int] = [2, 2, 2, 2],
+                 residual_connection_layers: Dict[str, Any] = {'2': [0], '3': [0, 1]},
+                 node_msg_dropout: float = 0.3,
+                 residual_dropout: float = 0.3,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
                  ignore_span_metric: bool = False) -> None:
-        super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
+        super(GraphSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
@@ -83,6 +88,22 @@ class GanSemanticRoleLabeler(Model):
             self.label_selector = torch.nn.Parameter(label_selector, requires_grad=False)
             """
             pass
+
+        self.use_graph_srl_encoder = use_graph_srl_encoder
+        if self.use_graph_srl_encoder:
+            if self.lemma_embedder.get_output_dim() != self.predicate_embedder.get_output_dim():
+                raise ConfigurationError("Embedding dimensions of lemmas and predicates are not equal")
+            residual_layers = dict() 
+            for k, v in residual_connection_layers.items():
+                residual_layers[int(k)] = v
+            srl_encoder.add_gcn_parameters(
+                self.num_classes, 
+                lemma_embedder.get_output_dim(), 
+                layer_timesteps = layer_timesteps,
+                residual_connection_layers = residual_layers,
+                node_msg_dropout = node_msg_dropout,
+                residual_dropout = residual_dropout) 
+
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
@@ -141,6 +162,10 @@ class GanSemanticRoleLabeler(Model):
             pis = torch.unsqueeze(predicate_indicators.float(), -1) 
             # (batch_size, dim, 1); select the predicate embedding
             embedded_predicates = torch.bmm(embedded_predicates, pis)
+            
+            if self.use_graph_srl_encoder:
+                embedded_predicates_ref = embedded_predicates
+
             # (batch_size, length, dim); `expand` avoid data copy, unlike `repeat`
             embedded_predicates = embedded_predicates.expand(-1, -1, length).transpose(1, 2)
             # apply dropout to predicate embeddings
@@ -192,60 +217,74 @@ class GanSemanticRoleLabeler(Model):
                                     x["predicate"], x["predicate_index"], ) for x in metadata])
          
         if self.training:
-            noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
+            class_probs, noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
             output_dict["kl_loss"] = kl_loss
-
-            predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
-            full_label_masks = mask.clone() # srl label masks
-            """ 
-            print('\nlemmas: ', lemmas)
-            print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
-            print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-            """
-            if self.mask_empty_labels:
-                # mask out empty labels 
-                full_label_masks[predicted_labels == 0] = 0
-            else:
-                # use a special lemma embedding empty labels
-                lemmas = lemmas['lemmas']
-                lemmas = lemmas * (predicted_labels != 0).long()
-                lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
-                lemmas = {'lemmas': lemmas}
-            """
-            print('masked lemmas:', lemmas)
-            print('label_masks ', full_label_masks, full_label_masks.requires_grad)
-            """
-            embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
-            embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
-            embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
-                
-            #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
-            embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
-            if self.use_label_indicator:
-                label_indicator = self.label_indicator(srl_frames[:batch_size, :]) 
-                embedded_verb_labels = torch.cat([embedded_verb_labels, label_indicator], -1)
-            """
-            print('\nembedded_labels: {}\n'.format(embedded_verb_labels))
-            print('\nembedded_size: {}\n'.format(embedded_verb_labels.size()))
-            print('\nlabel_sequence:\n{}'.format(srl_frames[:batch_size, :]))
-            import sys
-            sys.exit(0)
-            """
-            gan_loss_input = {'v_embedded_tokens': embedded_verb_tokens,
-                              'v_embedded_lemmas': embedded_verb_lemmas,
-                              'v_embedded_predicates': embedded_verb_predicates,
-                              'v_embedded_labels': embedded_verb_labels,
-                              'n_embedded_tokens': embedded_noun_tokens,
-                              'n_embedded_lemmas': embedded_noun_lemmas,
-                              'n_embedded_predicates': embedded_noun_predicates,
-                              'n_embedded_labels': embedded_noun_labels}
-            self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
             
-            #print('\nlogits:\n{}'.format(logits))
-            #print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
-            #import sys
-            #sys.exit(0)
+            if self.use_graph_srl_encoder:
+                embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
+                
+                lemma_dim = embedded_lemma_input.size()[-1]
+                indices = argument_indices.unsqueeze(-1).expand(-1, -1, lemma_dim)
+                
+                embedded_nodes = torch.gather(embedded_lemma_input, 1, indices)
+                embedded_preds = embedded_predicates_ref.transpose(1, 2)
+                embedded_nodes = torch.cat([embedded_preds, embedded_nodes], 1)
+                
+                embedded_verb_nodes = embedded_nodes[:batch_size, :]
+                embedded_noun_nodes = embedded_nodes[batch_size:, :]
+                
+                edge_types = torch.gather(torch.cat([srl_frames[:batch_size, :], noun_labels], 0), 1, argument_indices)
+                edge_types = edge_types * argument_mask
+
+                verb_edge_types = edge_types[:batch_size, :] 
+                noun_edge_types = edge_types[batch_size:, :]
+                
+                onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
+                noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices[batch_size:, :])
+                
+                graph_input = {'v_embedded_nodes': embedded_verb_nodes,
+                               'v_edge_types': verb_edge_types,
+                               'v_edge_type_onehots': None, 
+                               'n_embedded_nodes': embedded_noun_nodes,
+                               'n_edge_types': noun_edge_types,
+                               'n_edge_type_onehots': noun_edge_onehots}
+
+                self.srl_encoder.multi_layer_gcn_loss(
+                    graph_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
+            else:
+                predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
+                full_label_masks = mask.clone() # srl label masks
+                
+                if self.mask_empty_labels:
+                    # mask out empty labels 
+                    full_label_masks[predicted_labels == 0] = 0
+                else:
+                    # use a special lemma embedding empty labels
+                    lemmas = lemmas['lemmas']
+                    lemmas = lemmas * (predicted_labels != 0).long()
+                    lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
+                    lemmas = {'lemmas': lemmas}
+                
+                embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
+                embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
+                embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
+                    
+                #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
+                embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
+                if self.use_label_indicator:
+                    label_indicator = self.label_indicator(srl_frames[:batch_size, :]) 
+                    embedded_verb_labels = torch.cat([embedded_verb_labels, label_indicator], -1)
+                
+                gan_loss_input = {'v_embedded_tokens': embedded_verb_tokens,
+                                  'v_embedded_lemmas': embedded_verb_lemmas,
+                                  'v_embedded_predicates': embedded_verb_predicates,
+                                  'v_embedded_labels': embedded_verb_labels,
+                                  'n_embedded_tokens': embedded_noun_tokens,
+                                  'n_embedded_lemmas': embedded_noun_lemmas,
+                                  'n_embedded_predicates': embedded_noun_predicates,
+                                  'n_embedded_labels': embedded_noun_labels}
+                self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
 
             # assumming we can access gold labels for nominal part
             if reconstruction_loss:
@@ -469,7 +508,7 @@ class GanSemanticRoleLabeler(Model):
         #print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
         #import sys
         #sys.exit(0)
-        return max_likelihood_sequence, embedded_labels, loss 
+        return class_probs, max_likelihood_sequence, embedded_labels, loss 
 
 
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
