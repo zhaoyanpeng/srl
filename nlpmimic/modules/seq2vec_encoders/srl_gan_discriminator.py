@@ -268,6 +268,12 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             wit = self._node_msg_dropout(torch.sum(wit, 1)) 
             probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
             probs = probs.squeeze(-1)
+        elif self._aggregation_type == 'c':
+            edge_average = node_mask.float() / torch.sum(node_mask, -1).unsqueeze(-1).float()
+            wit = gate * info * node_mask.unsqueeze(-1).float()
+            wit = self._node_msg_dropout(torch.sum(wit, 1)) 
+            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
+            probs = probs.squeeze(-1)
         elif self._aggregation_type == 'b':
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = torch.tanh(self._trans(wit))
