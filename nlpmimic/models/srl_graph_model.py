@@ -36,6 +36,7 @@ class GraphSemanticRoleLabeler(Model):
                  label_loss_type: str = 'reverse_kl',
                  use_graph_srl_encoder: bool = False,
                  regularized_labels: List[str] = None,
+                 regularized_nonarg: bool = False,
                  layer_timesteps: List[int] = [2, 2, 2, 2],
                  residual_connection_layers: Dict[str, Any] = {'2': [0], '3': [0, 1]},
                  node_msg_dropout: float = 0.3,
@@ -80,6 +81,7 @@ class GraphSemanticRoleLabeler(Model):
         
         self.label_loss_type = label_loss_type
         self.regularized_labels = regularized_labels
+        self.regularized_nonarg = regularized_nonarg
         if self.regularized_labels:
             """
             label_indexes = [self.vocab.get_token_index(label, namespace="srl_tags") 
@@ -219,11 +221,12 @@ class GraphSemanticRoleLabeler(Model):
                                     x["predicate"], x["predicate_index"], ) for x in metadata])
          
         if self.training:
-            class_probs, noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
-            #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
-            output_dict["kl_loss"] = kl_loss
-            
             if self.use_graph_srl_encoder:
+                class_probs, noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(
+                    class_probabilities, used_mask, argument_indices[batch_size:, :])
+                #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+                output_dict["kl_loss"] = kl_loss
+            
                 embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
                 
                 lemma_dim = embedded_lemma_input.size()[-1]
@@ -255,6 +258,10 @@ class GraphSemanticRoleLabeler(Model):
                 self.srl_encoder.multi_layer_gcn_loss(
                     graph_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
             else:
+                class_probs, noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
+                #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
+                output_dict["kl_loss"] = kl_loss
+            
                 predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
                 full_label_masks = mask.clone() # srl label masks
                 
@@ -443,7 +450,7 @@ class GraphSemanticRoleLabeler(Model):
             output_dict['dis_loss'] = dis_loss / 2 
         return None 
        
-    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor, argument_indices: torch.Tensor = None) -> torch.Tensor:
         sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
         if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
@@ -483,6 +490,18 @@ class GraphSemanticRoleLabeler(Model):
             embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
 
         if self.regularized_labels:
+            # if we only want to regularize non-argument labels
+            # we need to choose the predicted non-argument labels
+            if self.regularized_nonarg:
+                # obtain non-argument mask, is there any more efficient method?
+                non_arg_mask = torch.zeros((batch_size, sequence_length), device=mask.device)
+                non_arg_mask.scatter_(1, argument_indices, 1)
+                pad_mask = argument_indices[:, 0] != 0
+                non_arg_mask[:, 0].masked_fill_(pad_mask, 0)
+                non_arg_mask = non_arg_mask == 0
+                # select predicted non-argument labels
+                class_probs = class_probs * non_arg_mask.unsqueeze(-1).float() 
+
             class_probs = class_probs * mask.unsqueeze(-1).float() 
             batch_probs = torch.sum(class_probs, 1)
             

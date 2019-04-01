@@ -90,8 +90,6 @@
         }
       ]
     ],
-    "label_loss_type": "unscale_kl",
-    "regularized_labels": ["O"],
     "binary_feature_dim": 100, 
     "temperature": 1,
     "fixed_temperature": false,
@@ -99,12 +97,15 @@
     //"use_label_indicator": true,
     "zero_null_lemma_embedding": true,
     
+    "label_loss_type": "unscale_kl",
+    "regularized_labels": ["O"],
+    "regularized_nonarg": true,
     "use_graph_srl_encoder": true,
     "layer_timesteps": [3, 5, 7, 2],
     "residual_connection_layers": {"2": [0], "3": [0, 1]},
     "node_msg_dropout": 0.3,
     "residual_dropout": 0.3,
-    "aggregation_type": "a",
+    "aggregation_type": "c",
   },
   "iterator": {
     "type": "bucket",
@@ -120,17 +121,17 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 10,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
     "gen_pretraining": -1, 
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
-    "kld_loss_scalar": 1.0,
+    "kld_loss_scalar": 0.5,
     "consecutive_update": false,
-    "dis_max_nbatch": 1,
-    "gen_max_nbatch": 2,
+    "dis_max_nbatch": 2,
+    "gen_max_nbatch": 8,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95

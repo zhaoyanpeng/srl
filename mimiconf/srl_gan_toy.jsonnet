@@ -99,8 +99,6 @@
         //}
       //]
     ],
-    "label_loss_type": "unscale_kl",
-    "regularized_labels": ["O"],
     "binary_feature_dim": 2, 
     "temperature": 0.01,
     "fixed_temperature": true,
@@ -108,20 +106,24 @@
     //"use_label_indicator": true,
     "zero_null_lemma_embedding": true,
      
+    "label_loss_type": "unscale_kl",
+    "regularized_labels": ["O"],
+    "regularized_nonarg": true,
     "use_graph_srl_encoder": true,
     "layer_timesteps": [2, 2, 2, 2],
     "residual_connection_layers": {"2": [0], "3": [0, 1]},
     "node_msg_dropout": 0.3,
     "residual_dropout": 0.3,
+    "aggregation_type": "c",
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 1 
+    "batch_size": 2 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 2,
+    "num_epochs": 1,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
