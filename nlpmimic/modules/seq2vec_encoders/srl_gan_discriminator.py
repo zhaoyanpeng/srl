@@ -225,6 +225,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                 #msg_to_arguments = msg_to_arguments * node_mask.unsqueeze(-1).float()
                 msg_to_predicate = torch.cat([output_types_per_node[:, x, y, :].unsqueeze(1) 
                     for x, y in zip(msg_to_predicate_idx, msg_to_predicate_idy)], 1)
+                # node masks are applied here 
                 msg_to_predicate = msg_to_predicate * edge_average.unsqueeze(-1) 
                 # (batch_size, 1, hidden_dim)
                 msg_to_predicate = torch.sum(msg_to_predicate, 1, keepdim=True)

@@ -17,7 +17,7 @@ from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_deco
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
 
-@Model.register("srl_graph")
+@Model.register("srl_argument")
 class GraphSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  token_embedder: TextFieldEmbedder,
@@ -37,6 +37,7 @@ class GraphSemanticRoleLabeler(Model):
                  use_graph_srl_encoder: bool = False,
                  regularized_labels: List[str] = None,
                  regularized_nonarg: bool = False,
+                 suppress_nonarg: bool = False,
                  layer_timesteps: List[int] = [2, 2, 2, 2],
                  residual_connection_layers: Dict[str, Any] = {'2': [0], '3': [0, 1]},
                  node_msg_dropout: float = 0.3,
@@ -51,13 +52,18 @@ class GraphSemanticRoleLabeler(Model):
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
         self.mask_empty_labels = mask_empty_labels
+        self.suppress_nonarg = suppress_nonarg
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
         self.label_embedder = label_embedder
         self.predicate_embedder = predicate_embedder
         
-        self.num_classes = self.vocab.get_vocab_size("srl_tags")
+        if not self.suppress_nonarg:
+            self.num_classes = self.vocab.get_vocab_size("srl_tags")
+        else: # FIXME: assumming non-argument label has id 0, should ensure this in the configuration file
+            self.num_classes = self.vocab.get_vocab_size("srl_tags") - 1
+            
         self.null_lemma_idx = self.vocab.get_token_index("NULL_LEMMA", namespace="lemmas")
         
         if zero_null_lemma_embedding:
@@ -100,7 +106,7 @@ class GraphSemanticRoleLabeler(Model):
             for k, v in residual_connection_layers.items():
                 residual_layers[int(k)] = v
             srl_encoder.add_gcn_parameters(
-                self.num_classes, 
+                self.num_classes, # FIXME: be careful when discarding the non-argument label 
                 lemma_embedder.get_output_dim(), 
                 layer_timesteps = layer_timesteps,
                 residual_connection_layers = residual_layers,
@@ -110,7 +116,11 @@ class GraphSemanticRoleLabeler(Model):
 
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
-        self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
+        # FIXME: should be rewritten when discarding the non-argument label
+        self.span_metric = DependencyBasedF1Measure(vocab, 
+                                                    tag_namespace = "srl_tags", 
+                                                    unlabeled_vals = self.regularized_nonarg,
+                                                    ignore_classes = ["V"])
 
         self.seq_encoder = seq_encoder
         self.srl_encoder = srl_encoder
@@ -241,10 +251,16 @@ class GraphSemanticRoleLabeler(Model):
                 
                 edge_types = torch.gather(torch.cat([srl_frames[:batch_size, :], noun_labels], 0), 1, argument_indices)
                 edge_types = edge_types * argument_mask
-
+                # FIXME: edge type 0 indicates the non-argument label, but should indicate the 1st argument label when
+                # non-argument label is discarded
                 verb_edge_types = edge_types[:batch_size, :] 
                 noun_edge_types = edge_types[batch_size:, :]
-                
+                if self.suppress_nonarg: # verbal argument label indexes >= 1; 0 will refer to the 1st argument label
+                                         # but 0 is as well used as padding number; FIXME: be careful of this ...
+                                         # we will rely on argument masks to remove padding numbers
+                    verb_edge_types = verb_edge_types - 1 
+                    verb_edge_types = torch.clamp(verb_edge_types, min=1) 
+
                 onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
                 noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices[batch_size:, :])
                 
@@ -373,8 +389,13 @@ class GraphSemanticRoleLabeler(Model):
             
             #print(max_likelihood_sequence)
 
-            tags = [self.vocab.get_token_from_index(x, namespace="srl_tags")
-                    for x in max_likelihood_sequence]
+            if not self.suppress_nonarg:
+                tags = [self.vocab.get_token_from_index(x, namespace="srl_tags")
+                        for x in max_likelihood_sequence]
+            else:
+                tags = [self.vocab.get_token_from_index(x + 1, namespace="srl_tags")
+                        for x in max_likelihood_sequence]
+                
             all_tags.append(tags)
         returned_dict["srl_tags"] = all_tags
         return returned_dict
@@ -478,18 +499,25 @@ class GraphSemanticRoleLabeler(Model):
             print(tags)
         print('\nmax_ll_sequence:\n{}'.format(max_likelihood_sequence))
         """
+        if not self.suppress_nonarg:
+            embeddings = self.label_embedder.weight
+        else: # discard the embedding of the non-argument label
+            embeddings = self.label_embedder.weight[1:, :]
         
         embedded_labels =self.embedding_dropout(
-            torch.matmul(class_probs, self.label_embedder.weight)) 
+            torch.matmul(class_probs, embeddings)) 
         _, max_likelihood_sequence = torch.max(class_probs, -1)
         for i, length in enumerate(sequence_lengths):
-            max_likelihood_sequence[i, length:] = 0
+            # 0 is in fact the 1st argument label when we suppress the non-argument label
+            # FIXME: be careful of this ...
+            max_likelihood_sequence[i, length:] = 0 
         
         if self.use_label_indicator:
             label_indicator = self.label_indicator(max_likelihood_sequence)    
             embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
-
-        if self.regularized_labels:
+        
+        # we cannot regularize labels any more when we go for suppressing non-argument label
+        if self.regularized_labels and not self.suppress_nonarg:
             # if we only want to regularize non-argument labels
             # we need to choose the predicted non-argument labels
             if self.regularized_nonarg:

@@ -26,6 +26,7 @@ class DependencyBasedF1Measure(Metric):
     def __init__(self,
                  vocabulary: Vocabulary,
                  tag_namespace: str = "srl_tags",
+                 unlabeled_vals: bool = False,
                  ignore_classes: List[str] = None) -> None:
         """
         Parameters
@@ -52,6 +53,7 @@ class DependencyBasedF1Measure(Metric):
 
         self._label_vocabulary = vocabulary.get_index_to_token_vocabulary(tag_namespace)
         self._ignore_classes: List[str] = ignore_classes or []
+        self._unlabeled_vals = unlabeled_vals
 
         # These will hold per label span counts.
         self._uniqueness_err: Dict[str, int] = defaultdict(int)
@@ -116,17 +118,29 @@ class DependencyBasedF1Measure(Metric):
                 # completely padded. These contribute nothing, so we skip these rows.
                 continue
 
-            predicted_string_labels = [self._label_vocabulary[label_id]
-                                       for label_id in sequence_prediction[:length].tolist()]
             gold_string_labels = [self._label_vocabulary[label_id]
                                   for label_id in sequence_gold_label[:length].tolist()]
-            
-            predicted_spans = [(string_tag, (index, index + 1)) for index, string_tag 
-                               in enumerate(predicted_string_labels) if string_tag != "O"]
             gold_spans = [(string_tag, (index, index + 1)) for index, string_tag 
                           in enumerate(gold_string_labels) if string_tag != 'O']
-            
-            #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
+
+            if not self._unlabeled_vals:  
+                predicted_string_labels = [self._label_vocabulary[label_id]
+                                       for label_id in sequence_prediction[:length].tolist()]
+                predicted_spans = [(string_tag, (index, index + 1)) for index, string_tag 
+                                   in enumerate(predicted_string_labels) if string_tag != "O"]
+            else:
+                predicted_string_labels = [self._label_vocabulary[label_id + 1]
+                                       for label_id in sequence_prediction[:length].tolist()]
+                predicted_spans = []
+                for _, (index, _) in gold_spans:
+                    string_tag = predicted_string_labels[index] 
+                    predicted_spans.append((string_tag, (index, index + 1)))
+            """ 
+            print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
+            print('\n{}\n{}\n'.format(gold_spans, predicted_spans))
+            print(sequence_prediction[:length]) 
+            print(sequence_gold_label[:length])
+            """
 
             duplicate_labels = defaultdict(int)
             for span in predicted_spans:
