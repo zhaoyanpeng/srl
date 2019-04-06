@@ -89,6 +89,7 @@ class GanSrlTrainer(Trainer):
                  dis_loss_scalar: float = 1.,
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
+                 bpr_loss_scalar: float = 1.,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
                  gen_max_nbatch: int = 0,
@@ -137,6 +138,7 @@ class GanSrlTrainer(Trainer):
         self.gen_loss_scalar = gen_loss_scalar
         self.dis_loss_scalar = dis_loss_scalar
         self.kld_loss_scalar = kld_loss_scalar
+        self.bpr_loss_scalar = bpr_loss_scalar
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
@@ -253,9 +255,11 @@ class GanSrlTrainer(Trainer):
                 loss += self.model.get_regularization_penalty()
 
                 kl_loss = output_dict["kl_loss"]
+                bp_loss = output_dict["bp_loss"]
             else:
                 loss = None
                 kl_loss = None
+                bp_loss = None
             if reconstruction_loss: # can be added into compulsory loss in semi-supervised setting
                 rec_loss = output_dict["rec_loss"]
             else:
@@ -264,14 +268,18 @@ class GanSrlTrainer(Trainer):
                 output_dict = self.model.decode(output_dict)
                 tokens = output_dict['tokens'][:5]
                 labels = output_dict['srl_tags'][:5]
-                for token, label in zip(tokens, labels):
-                    print('\n{}\n{}'.format(token, label))
+                predicates = output_dict["predicate"]
+                pindexes = output_dict["predicate_index"]
+                for token, label, p, pid in zip(tokens, labels, predicates, pindexes):
+                    xx = ['({}, {})'.format(t, l) for t, l in zip(token, label)]
+                    print('{} {}.{}\n'.format(xx, p, pid))
+                    #print('\n{}\n{}'.format(token, label))
         except KeyError:
             if for_training:
                 raise RuntimeError("The model you are trying to optimize does not contain a"
                                    " '*loss' key in the output of model.forward(inputs).")
             loss = rec_loss = None
-        return loss, rec_loss, kl_loss
+        return loss, rec_loss, kl_loss, bp_loss
     
     def rescale_gradients(self, parameter_names: List[str]) -> Optional[float]:
         return mimic_training_util.rescale_gradients(self.model, parameter_names, self._grad_norm)
@@ -379,7 +387,7 @@ class GanSrlTrainer(Trainer):
 
                 # update generator
                 self.optimizer.zero_grad()
-                gen_loss, rec_loss, kl_loss = self.batch_loss(batch, 
+                gen_loss, rec_loss, kl_loss, bp_loss = self.batch_loss(batch, 
                                           for_training=True, 
                                           retrive_generator_loss=True,
                                           reconstruction_loss=self.rec_in_training,
@@ -406,6 +414,9 @@ class GanSrlTrainer(Trainer):
                     if kl_loss is not None:
                         gen_loss += self.kld_loss_scalar * kl_loss
                         kl_loss = kl_loss.item()
+                    if bp_loss is not None:
+                        gen_loss += self.bpr_loss_scalar * bp_loss
+                        bp_loss = bp_loss.item()
                     gen_loss.backward()
 
                 gen_batch_grad_norm = self._gradient(self.optimizer, True, batch_num_total)
@@ -414,6 +425,7 @@ class GanSrlTrainer(Trainer):
             else:
                 g_loss = None
                 kl_loss = None
+                bp_loss = None
                 gen_batch_grad_norm = None
             #logger.info('')
             #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
@@ -429,7 +441,7 @@ class GanSrlTrainer(Trainer):
 
                 # update discriminator
                 self.optimizer_dis.zero_grad()
-                dis_loss, rec_loss, kl_loss = self.batch_loss(batch, 
+                dis_loss, rec_loss, _, _ = self.batch_loss(batch, 
                                                  for_training=True, 
                                                  retrive_generator_loss=False,
                                                  reconstruction_loss=self.rec_in_training)
@@ -485,6 +497,7 @@ class GanSrlTrainer(Trainer):
                                                       train_loss, 
                                                       batches_this_epoch,
                                                       kl_loss = kl_loss,
+                                                      bp_loss = bp_loss,
                                                       generator_loss = g_loss,
                                                       discriminator_loss = d_loss,
                                                       reconstruction_loss = reconstruction_loss)
@@ -557,7 +570,7 @@ class GanSrlTrainer(Trainer):
         val_loss = 0
         for batch in val_generator_tqdm:
 
-            _, loss, _ = self.batch_loss(batch, 
+            _, loss, _, _ = self.batch_loss(batch, 
                                       for_training=False,
                                       retrive_generator_loss=False, # dead; active only during training
                                       reconstruction_loss=True, # implying gold labels exist
@@ -771,6 +784,7 @@ class GanSrlTrainer(Trainer):
         dis_loss_scalar = params.pop("dis_loss_scalar", 1.)
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
         kld_loss_scalar = params.pop("kld_loss_scalar", 1.)
+        bpr_loss_scalar = params.pop("bpr_loss_scalar", 1.)
         dis_min_loss = params.pop("dis_min_loss", -1.)
 
         consecutive_update = params.pop("consecutive_update", False)
@@ -853,6 +867,7 @@ class GanSrlTrainer(Trainer):
                    dis_loss_scalar = dis_loss_scalar,
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
+                   bpr_loss_scalar = bpr_loss_scalar,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
                    gen_max_nbatch = gen_max_nbatch,

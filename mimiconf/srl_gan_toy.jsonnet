@@ -21,7 +21,6 @@
   //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   //"datasets_for_vocab_creation": ["vocab"],
   "model": {
-    "type": "srl_graph",
     "token_embedder": {
       "token_embedders": {
         "tokens": {
@@ -66,7 +65,7 @@
     },
     "srl_encoder": {
       "type": "srl_gan_dis",
-      "module_choice": "gcn",
+      "module_choice": "c",
       "embedding_dim": 6,
       //"embedding_dim": 15,
       "projected_dim": 4,
@@ -99,36 +98,31 @@
         //}
       //]
     ],
+    "type": "srl_gan",
     "binary_feature_dim": 2, 
     "temperature": 0.01,
-    "fixed_temperature": true,
+    "fixed_temperature": false,
     "mask_empty_labels": false,
     //"use_label_indicator": true,
     "zero_null_lemma_embedding": true,
-     
+    
+    "regularized_batch": true,
     "label_loss_type": "unscale_kl",
     "regularized_labels": ["O"],
-    "regularized_nonarg": true,
-    "use_graph_srl_encoder": true,
-    "layer_timesteps": [2, 2, 2, 2],
-    "residual_connection_layers": {"2": [0], "3": [0, 1]},
-    "node_msg_dropout": 0.3,
-    "residual_dropout": 0.3,
-    "aggregation_type": "c",
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 2 
+    "batch_size": 5 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 1,
+    "num_epochs": 5,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 2,
     "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -136,6 +130,7 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
+    "bpr_loss_scalar": 10.0,
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 4,

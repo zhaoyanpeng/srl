@@ -29,6 +29,7 @@ class GanSemanticRoleLabeler(Model):
                  binary_feature_dim: int,
                  temperature: float = 1.,
                  fixed_temperature: bool = False,
+                 regularized_batch: bool = False,
                  mask_empty_labels: bool = True,
                  embedding_dropout: float = 0.,
                  use_label_indicator: bool = False,
@@ -44,6 +45,7 @@ class GanSemanticRoleLabeler(Model):
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
         self.mask_empty_labels = mask_empty_labels
+        self.regularized_batch = regularized_batch
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
@@ -192,9 +194,13 @@ class GanSemanticRoleLabeler(Model):
                                     x["predicate"], x["predicate_index"], ) for x in metadata])
          
         if self.training:
-            noun_labels, embedded_noun_labels, kl_loss = self._argmax_logits(class_probabilities, used_mask)
+            class_probs, noun_labels, embedded_noun_labels, kl_loss = \
+                self._argmax_logits(class_probabilities, used_mask, retrive_generator_loss)
             #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
             output_dict["kl_loss"] = kl_loss
+            output_dict["bp_loss"] = self._regularize_batch(class_probs, 
+                                                            srl_frames[:batch_size, :], 
+                                                            mask, batch_size, length, retrive_generator_loss) 
 
             predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
             full_label_masks = mask.clone() # srl label masks
@@ -330,7 +336,46 @@ class GanSemanticRoleLabeler(Model):
             all_tags.append(tags)
         returned_dict["srl_tags"] = all_tags
         return returned_dict
-   
+    
+    def _regularize_batch(self, 
+                          noun_class_probs: torch.Tensor, 
+                          verb_labels: torch.Tensor,
+                          all_mask: torch.Tensor,
+                          batch_size: int,
+                          length: int,
+                          retrive_generator_loss: bool=False):
+        if not self.regularized_batch or not retrive_generator_loss:
+            return None
+
+        verb_mask = all_mask[:batch_size, :]
+        noun_mask = all_mask[batch_size:, :]
+        
+        class_probs = noun_class_probs * noun_mask.unsqueeze(-1).float() 
+        batch_probs = torch.sum(class_probs, 1)
+
+        verb_labels = verb_labels * verb_mask
+        
+        gold_labels = torch.zeros(self.num_classes, length, device=all_mask.device)
+        ones_labels = torch.ones(verb_labels.size(), device=all_mask.device)
+        gold_labels.scatter_add_(0, verb_labels, ones_labels)
+         
+        # ignore non-argument label
+        kl_gold = torch.sum(gold_labels, -1) + 1.
+        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
+        #print(kl_gold, kl_gold.size())
+        
+        kl_pseu = torch.sum(batch_probs, 0) + 1.
+        kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
+        #print(kl_pseu, kl_pseu.size())
+        
+        kl_loss = kl_gold * torch.log(kl_gold / kl_pseu)
+        #print(kl_loss, kl_loss.size())
+        kl_loss = torch.sum(kl_loss)
+        #print(kl_loss) 
+        #import sys
+        #sys.exit(0)
+        return kl_loss
+
     def _gan_loss(self, 
                   input_dict: Dict[str, torch.Tensor], 
                   mask: torch.Tensor, 
@@ -402,7 +447,7 @@ class GanSemanticRoleLabeler(Model):
             output_dict['dis_loss'] = dis_loss / 2 
         return None 
        
-    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor, retrive_generator_loss: bool=False) -> torch.Tensor:
         sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
         if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
@@ -441,7 +486,7 @@ class GanSemanticRoleLabeler(Model):
             label_indicator = self.label_indicator(max_likelihood_sequence)    
             embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
 
-        if self.regularized_labels:
+        if self.regularized_labels and retrive_generator_loss:
             class_probs = class_probs * mask.unsqueeze(-1).float() 
             batch_probs = torch.sum(class_probs, 1)
             
@@ -469,7 +514,7 @@ class GanSemanticRoleLabeler(Model):
         #print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
         #import sys
         #sys.exit(0)
-        return max_likelihood_sequence, embedded_labels, loss 
+        return class_probs, max_likelihood_sequence, embedded_labels, loss 
 
 
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
