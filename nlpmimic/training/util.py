@@ -135,6 +135,16 @@ def rescale_gradients(model: Model,
         return sparse_clip_norm(parameters_to_clip, grad_norm)
     return None
 
+def clip_parameters(model: Model,
+                    param_signatures: List[str],
+                    clip_value: float = 0.01) -> None:
+    """ Used by WGAN which requires parameters to be clipped
+    """
+    for n, p in model.named_parameters(): 
+        if n in param_signatures and p.grad is not None:
+            p.data.clamp_(-clip_value, clip_value)
+    return None
+
 def get_metrics(model: Model, 
                 total_loss: float, 
                 num_batches: int, 

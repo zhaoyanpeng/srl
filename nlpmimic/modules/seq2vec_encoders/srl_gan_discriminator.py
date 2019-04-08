@@ -60,6 +60,9 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             self.initialize_single(embedding_dim, projected_dim, hidden_size, attent_size, num_layer, activation) 
         else:
             raise ConfigurationError(f"unknown module choice {self.module_choice}")
+    
+    def set_wgan(self, use_wgan: bool = False):
+        self.use_wgan = use_wgan
 
     def add_gcn_parameters(self, 
                            num_edge_types: int, 
@@ -354,7 +357,10 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         elif self.module_choice == 'b':
             logits = self.model_b(tokens, mask)
         elif self.module_choice == 'c':
-            logits = self.model_c(tokens, mask)
+            if self.use_wgan:
+                logits = self.model_c_wgan(tokens, mask)
+            else:
+                logits = self.model_c(tokens, mask)
         elif self.module_choice == 'd':
             logits = self.model_d(tokens, mask)
         elif self.module_choice == 'e':
@@ -364,6 +370,42 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         else:
             raise ConfigurationError(f"unknown discriminator type: {self.module_choice}")
         return logits 
+
+    def model_c_wgan(self, tokens: torch.Tensor, mask: torch.Tensor = None):
+        """ Average-based model outputs could be dominated by non-argument labels.
+        """
+        logits = torch.tanh(self._projection(tokens))
+        # wgan without sigmoid
+        individual_probs = self._logits(logits)
+        #print(individual_probs.size())
+        
+        #print(mask, mask.size())
+        input_lengths = torch.sum(mask, -1)
+        #print(input_lengths)
+        
+        tokens_packed = torch.nn.utils.rnn.pack_padded_sequence(tokens, input_lengths, batch_first=True)
+        outputs, _ = self._gru(tokens_packed)
+        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
+        #print(outputs, outputs.size())
+
+        attent_vectors = torch.tanh(self._attent(outputs))
+        weights = self._weight(attent_vectors)
+        
+        used_mask = mask[:, :input_lengths[0]].unsqueeze(-1)
+        #print(used_mask, used_mask.size())
+        
+        weights = weights.masked_fill(used_mask == 0, -1e20)
+        #print(weights, weights.size())
+        weights = F.softmax(weights, dim=1)
+        #print(weights, weights.size())
+        
+        individual_probs = individual_probs[:, :input_lengths[0], :]
+        #print(individual_probs, individual_probs.size())
+        
+        probs = torch.bmm(individual_probs.transpose(1, 2), weights)
+        probs = probs.squeeze(-1).squeeze(-1)
+        #print(probs, probs.size())
+        return probs
 
     def model_c(self, tokens: torch.Tensor, mask: torch.Tensor = None):
         """ Average-based model outputs could be dominated by non-argument labels.

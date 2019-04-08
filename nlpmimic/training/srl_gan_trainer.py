@@ -90,6 +90,7 @@ class GanSrlTrainer(Trainer):
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
                  bpr_loss_scalar: float = 1.,
+                 clip_val: float = 5.0,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
                  gen_max_nbatch: int = 0,
@@ -139,6 +140,9 @@ class GanSrlTrainer(Trainer):
         self.dis_loss_scalar = dis_loss_scalar
         self.kld_loss_scalar = kld_loss_scalar
         self.bpr_loss_scalar = bpr_loss_scalar
+        # wgan
+        self.use_wgan = model.use_wgan 
+        self.clip_val = clip_val
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
@@ -320,6 +324,11 @@ class GanSrlTrainer(Trainer):
                 self._tensorboard.add_train_scalar("gradient_update/" + name, update_norm / (param_norm + 1e-7))
         else:
             optimizer.step()
+        
+        # wgan: clip discriminator's parameter values to a small range
+        if self.use_wgan and not for_generator: 
+            mimic_training_util.clip_parameters(self.model, self.dis_param_names, self.clip_val)
+
         return batch_grad_norm 
 
     def _train_epoch(self, epoch: int) -> Dict[str, float]:
@@ -790,6 +799,9 @@ class GanSrlTrainer(Trainer):
         consecutive_update = params.pop("consecutive_update", False)
         dis_max_nbatch = params.pop("dis_max_nbatch", 1)
         gen_max_nbatch = params.pop("gen_max_nbatch", 1)
+        
+        # parameters for wgan
+        clip_val = params.pop("clip_val", 5.0)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -827,10 +839,20 @@ class GanSrlTrainer(Trainer):
         
         #import sys
         #sys.exit(0)
-        
-        optimizer = Optimizer.from_params(parameters, params.pop("optimizer"))
+        if model.use_wgan:
+            optimizer = Optimizer.from_params(parameters, params.pop("optimizer_wgan"))
+            params.pop("optimizer")
+        else:
+            optimizer = Optimizer.from_params(parameters, params.pop("optimizer"))
+            params.pop("optimizer_wgan")
+
         if dis_params:
-            optimizer_dis = Optimizer.from_params(dis_params, params.pop("optimizer_dis"))
+            if model.use_wgan:
+                optimizer_dis = Optimizer.from_params(dis_params, params.pop("optimizer_wgan_dis"))
+                params.pop("optimizer_dis")
+            else:
+                optimizer_dis = Optimizer.from_params(dis_params, params.pop("optimizer_dis"))
+                params.pop("optimizer_wgan_dis")
         else:
             optimizer_dis = None
 
@@ -868,6 +890,7 @@ class GanSrlTrainer(Trainer):
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
                    bpr_loss_scalar = bpr_loss_scalar,
+                   clip_val = clip_val,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
                    gen_max_nbatch = gen_max_nbatch,

@@ -109,20 +109,21 @@
     "regularized_batch": true,
     "label_loss_type": "unscale_kl",
     "regularized_labels": ["O"],
+    "use_wgan": true,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 5 
+    "batch_size": 1 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 5,
+    "num_epochs": 1,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 3,
     "dis_min_loss": 0.45,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -134,6 +135,15 @@
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 4,
+    // wgan
+    "clip_val": 0.1,
+    "optimizer_wgan": {
+      "type": "rmsprop",
+    },
+    "optimizer_wgan_dis": {
+      "type": "rmsprop",
+    },
+    // normal
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95
