@@ -7,8 +7,8 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_graph_c_1.05_t1_fixed_flip_0.0r_kl_nln.5_na_lp100"
-param_name="srl_graph.jsonnet"
+model_name="srl_naive_c_1.05_flip_0.0r_morph_nln.5_la3_le1_pr2_bs54_8v2"
+param_name="srl_gan_naive.jsonnet"
 model_path=$droot/model
 
 library="nlpmimic"

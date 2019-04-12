@@ -90,6 +90,7 @@ class GanSrlTrainer(Trainer):
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
                  bpr_loss_scalar: float = 1.,
+                 use_wgan: bool = False,
                  clip_val: float = 5.0,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
@@ -141,7 +142,7 @@ class GanSrlTrainer(Trainer):
         self.kld_loss_scalar = kld_loss_scalar
         self.bpr_loss_scalar = bpr_loss_scalar
         # wgan
-        self.use_wgan = model.use_wgan 
+        self.use_wgan = use_wgan 
         self.clip_val = clip_val
 
         self.train_dx_data = train_dx_dataset 
@@ -259,7 +260,10 @@ class GanSrlTrainer(Trainer):
                 loss += self.model.get_regularization_penalty()
 
                 kl_loss = output_dict["kl_loss"]
-                bp_loss = output_dict["bp_loss"]
+                if 'bp_loss' in output_dict:
+                    bp_loss = output_dict["bp_loss"]
+                else:
+                    bp_loss = None
             else:
                 loss = None
                 kl_loss = None
@@ -839,20 +843,21 @@ class GanSrlTrainer(Trainer):
         
         #import sys
         #sys.exit(0)
-        if model.use_wgan:
+        use_wgan = getattr(model, 'use_wgan', False) 
+        if use_wgan:
             optimizer = Optimizer.from_params(parameters, params.pop("optimizer_wgan"))
-            params.pop("optimizer")
+            params.pop("optimizer", None)
         else:
             optimizer = Optimizer.from_params(parameters, params.pop("optimizer"))
-            params.pop("optimizer_wgan")
+            params.pop("optimizer_wgan", None)
 
         if dis_params:
-            if model.use_wgan:
+            if use_wgan:
                 optimizer_dis = Optimizer.from_params(dis_params, params.pop("optimizer_wgan_dis"))
-                params.pop("optimizer_dis")
+                params.pop("optimizer_dis", None)
             else:
                 optimizer_dis = Optimizer.from_params(dis_params, params.pop("optimizer_dis"))
-                params.pop("optimizer_wgan_dis")
+                params.pop("optimizer_wgan_dis", None)
         else:
             optimizer_dis = None
 
@@ -890,6 +895,7 @@ class GanSrlTrainer(Trainer):
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
                    bpr_loss_scalar = bpr_loss_scalar,
+                   use_wgan = use_wgan,
                    clip_val = clip_val,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,

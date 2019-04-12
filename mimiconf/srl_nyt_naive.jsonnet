@@ -8,27 +8,38 @@
     "type":"conll2009",
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
-    "instance_type": "srl_graph",
+    "instance_type": "srl_gan",
     "token_indexers": {
         "elmo": {
             "type": "elmo_characters"
         }
     }
   },
-  "reader_mode": "srl_gan",
-  "dis_param_name": ["srl_encoder", "predicate_embedder"],
+  "nytimes_reader": {
+    "type":"conllx_unlabeled",
+    "feature_labels": ["pos", "dep"],
+    "move_preposition_head": false,
+    "instance_type": "srl_gan",
+    "token_indexers": {
+        "elmo": {
+            "type": "elmo_characters"
+        }
+    }
+  },
+  "reader_mode": "srl_nyt",
+  "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
+  "add_unlabeled_noun": true,
+
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only",
+  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytmorphs/nytimes.45.only.part0-0",
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytmorphs/nytimes.noun.only.part0-0",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytmorphs/nytimes.verb.only.part0-0",
   
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.verbalized",
-  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
-  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
-    "type": "srl_graph",
     "token_embedder": {
       "token_embedders": {
         "elmo": {
@@ -45,7 +56,7 @@
         "lemmas": {
             "type": "embedding",
             "embedding_dim": 100,
-            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.c-sel",
+            "pretrained_file": "/disk/scratch1/s1847450/data//lemmata/en.lemma.100.20.vec.morph",
             "vocab_namespace": "lemmas",
             "trainable": false 
         }
@@ -58,7 +69,7 @@
       "sparse": false 
     },
     "predicate_embedder": {
-      "embedding_dim": 100,
+      "embedding_dim": 200,
       "vocab_namespace": "predicates",
       "trainable": true, 
       "sparse": false 
@@ -72,8 +83,8 @@
       "use_highway": true
     },
     "srl_encoder": {
-      "type": "srl_gan_dis",
-      "module_choice": "gcn",
+      "type": "srl_naive_dis",
+      "module_choice": "c",
       "embedding_dim": 600,
       //"embedding_dim": 554,
       "projected_dim": 200,
@@ -90,6 +101,8 @@
         }
       ]
     ],
+
+    "type": "srl_graph",
     "binary_feature_dim": 100, 
     "temperature": 1,
     "fixed_temperature": false,
@@ -99,18 +112,12 @@
     
     "label_loss_type": "unscale_kl",
     "regularized_labels": ["O"],
-    "regularized_nonarg": true,
-    "use_graph_srl_encoder": true,
-    "layer_timesteps": [3, 5, 7, 2],
-    "residual_connection_layers": {"2": [0], "3": [0, 1]},
-    "node_msg_dropout": 0.3,
-    "residual_dropout": 0.3,
-    "aggregation_type": "c",
+    "regularized_nonarg": false,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 64,
+    "batch_size": 54,
     "padding_noise": 0.0
   },
   "trainer": {
@@ -119,9 +126,9 @@
     "grad_clipping": 1.0,
     "patience": 50,
     "shuffle": true,
-    "num_serialized_models_to_keep": 10,
+    "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 2,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
