@@ -29,25 +29,27 @@ class GanSemanticRoleLabeler(Model):
                  binary_feature_dim: int,
                  temperature: float = 1.,
                  fixed_temperature: bool = False,
-                 regularized_batch: bool = False,
                  mask_empty_labels: bool = True,
                  embedding_dropout: float = 0.,
                  use_label_indicator: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  label_loss_type: str = 'reverse_kl',
+                 regularized_batch: bool = False,
                  regularized_labels: List[str] = None,
-                 use_wgan: bool = False,
+                 regularized_nonarg: bool = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
                  ignore_span_metric: bool = False) -> None:
-        super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer) 
+        super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
         self.mask_empty_labels = mask_empty_labels
         self.regularized_batch = regularized_batch
         
+        self.seq_encoder = seq_encoder
+        self.srl_encoder = srl_encoder
 
         self.token_embedder = token_embedder
         self.lemma_embedder = lemma_embedder
@@ -78,8 +80,9 @@ class GanSemanticRoleLabeler(Model):
         
         self.label_loss_type = label_loss_type
         self.regularized_labels = regularized_labels
+        self.regularized_nonarg = regularized_nonarg
         if self.regularized_labels:
-            """
+            """ # regularize specified labels
             label_indexes = [self.vocab.get_token_index(label, namespace="srl_tags") 
                             for label in self.regularized_labels] 
             label_selector = torch.zeros(self.num_classes)
@@ -87,17 +90,18 @@ class GanSemanticRoleLabeler(Model):
             self.label_selector = torch.nn.Parameter(label_selector, requires_grad=False)
             """
             pass
+
+        self.use_graph_srl_encoder = self.srl_encoder.signature == 'graph' 
+        if self.use_graph_srl_encoder:
+            if self.lemma_embedder.get_output_dim() != self.predicate_embedder.get_output_dim():
+                raise ConfigurationError("Embedding dimensions of lemmas and predicates are not equal")
+            srl_encoder.add_gcn_parameters(
+                self.num_classes, 
+                lemma_embedder.get_output_dim()) 
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
-
-        self.seq_encoder = seq_encoder
-        self.srl_encoder = srl_encoder
         self.temperature = torch.nn.Parameter(torch.tensor(temperature), requires_grad=fixed_temperature) 
-        
-        # set wgan model
-        self.use_wgan = use_wgan
-        self.srl_encoder.set_wgan(self.use_wgan)
 
         # There are exactly 2 binary features for the verb predicate embedding.
         self.binary_feature_embedding = Embedding(2, binary_feature_dim)
@@ -149,22 +153,12 @@ class GanSemanticRoleLabeler(Model):
             pis = torch.unsqueeze(predicate_indicators.float(), -1) 
             # (batch_size, dim, 1); select the predicate embedding
             embedded_predicates = torch.bmm(embedded_predicates, pis)
-            # (batch_size, length, dim); `expand` avoid data copy, unlike `repeat`
-            embedded_predicates = embedded_predicates.expand(-1, -1, length).transpose(1, 2)
             # apply dropout to predicate embeddings
-            embedded_predicate_input = self.embedding_dropout(embedded_predicates)
+            embedded_predicates = self.embedding_dropout(embedded_predicates)
             
             batch_size = batch_size // 2
-            
-            # verbal part
-            embedded_verb_tokens = embedded_token_input[:batch_size, :]
-            embedded_verb_predicates = embedded_predicate_input[:batch_size, :] 
-
             # nominal part
-            embedded_noun_tokens = embedded_token_input[batch_size:, :]
-            embedded_noun_predicates = embedded_predicate_input[batch_size:, :] 
-            
-            embedded_tokens = embedded_noun_tokens
+            embedded_tokens = embedded_token_input[batch_size:, :]
             used_mask = mask[batch_size:, :]
             used_pi = predicate_indicators[batch_size:, :]
         else:
@@ -172,7 +166,7 @@ class GanSemanticRoleLabeler(Model):
             used_mask = mask
             used_pi = predicate_indicators
 
-        # Predict srl labels using the srler that needs to be learned.
+        # Predict srl labels using the srler that needs to be trained.
         # Concatenate the verb feature onto the embedded text. This now
         # has shape (batch_size, sequence_length, embedding_dim + binary_feature_dim).
         embedded_pi = self.binary_feature_embedding(used_pi.long())
@@ -186,127 +180,291 @@ class GanSemanticRoleLabeler(Model):
         reshaped_log_probs = logits.view(-1, self.num_classes)
         class_probabilities = F.softmax(reshaped_log_probs, dim=-1).view(
                                         [batch_size, sequence_length, self.num_classes])
+        # We need to retain the mask in the output dictionary so that we can crop the 
+        # sequences to remove padding when we do viterbi inference in self.decode.
+        output_dict = {"logits": logits, 
+                       "class_probabilities": class_probabilities,
+                       "mask": used_mask}
+        
+        if self.training:
+            if self.use_graph_srl_encoder:
+                gan_loss_input = self.create_discriminator_graph_input(
+                                                        length,
+                                                        batch_size,
+                                                        argument_mask,
+                                                        used_mask,
+                                                        srl_frames,
+                                                        argument_indices,
+                                                        class_probabilities, 
+                                                        embedded_predicates,
+                                                        lemmas,
+                                                        output_dict)
+                self.srl_encoder(gan_loss_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
+            else:
+                gan_loss_input, full_label_masks = self.create_discriminator_input(
+                                                        length,
+                                                        batch_size,
+                                                        mask,
+                                                        used_mask,
+                                                        srl_frames,
+                                                        class_probabilities, 
+                                                        embedded_predicates,
+                                                        lemmas,
+                                                        output_dict,
+                                                        retrive_generator_loss)
+                self.srl_encoder(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
 
-        output_dict = {"logits": logits, "class_probabilities": class_probabilities}
-        # We need to retain the mask in the output dictionary
-        # so that we can crop the sequences to remove padding
-        # when we do viterbi inference in self.decode.
-        output_dict["mask"] = used_mask
+            # assumming we can access gold labels for nominal part
+            self.add_outputs(batch_size, srl_frames, logits, used_mask, reconstruction_loss, output_dict, metadata)
+        else: # not training
+            self.add_outputs(0, srl_frames, logits, used_mask, reconstruction_loss, output_dict, metadata)
+        return output_dict
+    
+    def create_discriminator_graph_input(self,
+                                         length: int,
+                                         batch_size: int,
+                                         argument_mask: torch.Tensor,
+                                         used_mask: torch.Tensor,
+                                         srl_frames: torch.Tensor,
+                                         argument_indices: torch.Tensor,
+                                         class_probabilities: torch.Tensor, 
+                                         embedded_predicates: torch.Tensor,
+                                         lemmas: Dict[str, torch.LongTensor],
+                                         output_dict: Dict[str, torch.Tensor]):
+        class_probs, noun_labels, _ = \
+            self._argmax_logits(class_probabilities, used_mask, argument_indices[batch_size:, :])
+        if self.regularized_labels:
+            output_dict["kl_loss"] = self._regularize(length, batch_size, used_mask, class_probs,
+                regularized_nonarg=self.regularized_nonarg, argument_indices=argument_indices[batch_size:, :])
+        else:
+            output_dict["kl_loss"] = None
+    
+        embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
         
+        lemma_dim = embedded_lemma_input.size()[-1]
+        indices = argument_indices.unsqueeze(-1).expand(-1, -1, lemma_dim)
         
+        embedded_nodes = torch.gather(embedded_lemma_input, 1, indices)
+        embedded_preds = embedded_predicates.transpose(1, 2)
+        embedded_nodes = torch.cat([embedded_preds, embedded_nodes], 1)
+        
+        embedded_verb_nodes = embedded_nodes[:batch_size, :]
+        embedded_noun_nodes = embedded_nodes[batch_size:, :]
+        
+        edge_types = torch.gather(torch.cat([srl_frames[:batch_size, :], noun_labels], 0), 1, argument_indices)
+        edge_types = edge_types * argument_mask
+
+        verb_edge_types = edge_types[:batch_size, :] 
+        noun_edge_types = edge_types[batch_size:, :]
+        
+        onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
+        noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices[batch_size:, :])
+        
+        graph_input = {'v_embedded_nodes': embedded_verb_nodes,
+                       'v_edge_types': verb_edge_types,
+                       'v_edge_type_onehots': None, 
+                       'n_embedded_nodes': embedded_noun_nodes,
+                       'n_edge_types': noun_edge_types,
+                       'n_edge_type_onehots': noun_edge_onehots}
+        return graph_input 
+
+    def create_discriminator_input(self,
+                                   length: int,
+                                   batch_size: int,
+                                   mask: torch.Tensor,
+                                   used_mask: torch.Tensor,
+                                   srl_frames: torch.Tensor,
+                                   class_probabilities: torch.Tensor, 
+                                   embedded_predicates: torch.Tensor,
+                                   lemmas: Dict[str, torch.LongTensor],
+                                   output_dict: Dict[str, torch.Tensor],
+                                   retrive_generator_loss: bool=False):
+        class_probs, noun_labels, embedded_noun_labels = \
+            self._argmax_logits(class_probabilities, used_mask)
+        if self.regularized_labels: # uniqueness and sparsity regularization
+            output_dict["kl_loss"] = self._regularize(length, batch_size, used_mask, class_probs, False)
+        else:
+            output_dict["kl_loss"] = None
+        if self.regularized_batch and retrive_generator_loss: # diversity regularization
+            output_dict["bp_loss"] = self._regularize_batch(length, batch_size, mask, class_probs, srl_frames[:batch_size, :]) 
+        else:
+            output_dict["bp_loss"] = None 
+    
+        predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
+        
+        if self.mask_empty_labels:
+            # srl label masks
+            full_label_masks = mask.clone() 
+            # mask out empty labels 
+            full_label_masks[predicted_labels == 0] = 0
+        else:
+            full_label_masks = mask
+            # use a special lemma embedding for empty labels
+            lemmas = lemmas['lemmas']
+            lemmas = lemmas * (predicted_labels != 0).long()
+            lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
+            lemmas = {'lemmas': lemmas}
+        
+        embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
+        embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
+        embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
+            
+        #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
+        embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
+        if self.use_label_indicator: # add one-hot vector features, not work, false by default
+            verb_label_indicator = self.label_indicator(srl_frames[:batch_size, :]) 
+            embedded_verb_labels = torch.cat([embedded_verb_labels, verb_label_indicator], -1)
+            noun_label_indicator = self.label_indicator(noun_labels)    
+            embedded_noun_labels = torch.cat([embedded_noun_labels, noun_label_indicator], -1)
+
+        # embedded predicates 
+        # (batch_size, length, dim); `expand` avoid data copy, unlike `repeat`
+        embedded_predicate_input = embedded_predicates.expand(-1, -1, length).transpose(1, 2)
+        embedded_verb_predicates = embedded_predicate_input[:batch_size, :] 
+        embedded_noun_predicates = embedded_predicate_input[batch_size:, :] 
+
+        gan_loss_input = {'v_embedded_tokens': None,
+                          'v_embedded_lemmas': embedded_verb_lemmas,
+                          'v_embedded_predicates': embedded_verb_predicates,
+                          'v_embedded_labels': embedded_verb_labels,
+                          'n_embedded_tokens': None,
+                          'n_embedded_lemmas': embedded_noun_lemmas,
+                          'n_embedded_predicates': embedded_noun_predicates,
+                          'n_embedded_labels': embedded_noun_labels}
+        return gan_loss_input, full_label_masks
+
+    def _regularize(self,
+                    length: int,
+                    batch_size: int,
+                    mask: torch.Tensor,
+                    class_probs: torch.Tensor,
+                    regularized_nonarg: bool=False,
+                    argument_indices: torch.Tensor=None):
+        # if we only want to regularize non-argument labels
+        # we need to choose the predicted non-argument labels
+        if regularized_nonarg:
+            # obtain non-argument mask, is there any other more efficient method?
+            non_arg_mask = torch.zeros((batch_size, length), device=mask.device)
+            non_arg_mask.scatter_(1, argument_indices, 1)
+            pad_mask = argument_indices[:, 0] != 0
+            non_arg_mask[:, 0].masked_fill_(pad_mask, 0)
+            non_arg_mask = non_arg_mask == 0
+            # select predicted non-argument labels
+            class_probs = class_probs * non_arg_mask.unsqueeze(-1).float() 
+
+        class_probs = class_probs * mask.unsqueeze(-1).float() 
+        batch_probs = torch.sum(class_probs, 1)
+        
+        batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
+
+        kl_loss = torch.log(batch_probs) * batch_probs
+        
+        if self.label_loss_type == 'reverse_kl':
+            # (k/n) ln ((k/n)/(1/n))
+            divider = 1. / torch.sum(mask, -1).float() 
+            kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
+        elif self.label_loss_type == 'unscale_kl':
+            pass # k ln ((k/n)/(1/n))  
+        else:
+            pass # ...
+        kl_loss = kl_loss[:, 1:] # discard the loss for empty labels
+
+        loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level
+        #loss = torch.mean(kl_loss[kl_loss > 0]) # loss at token level 
+        return loss
+
+    def _regularize_batch(self, 
+                          length: int,
+                          batch_size: int,
+                          all_mask: torch.Tensor,
+                          noun_class_probs: torch.Tensor, 
+                          verb_labels: torch.Tensor):
+        verb_mask = all_mask[:batch_size, :]
+        noun_mask = all_mask[batch_size:, :]
+        
+        class_probs = noun_class_probs * noun_mask.unsqueeze(-1).float() 
+        batch_probs = torch.sum(class_probs, 1)
+        # torch.histc() has been supported on GPU for the latest version of Pytorch   
+        verb_labels = verb_labels * verb_mask
+        verb_labels_cpu = verb_labels.detach().cpu().float()
+        kl_gold = torch.histc(verb_labels_cpu, bins=self.num_classes, min=0, max=self.num_classes - 1)
+        kl_gold = kl_gold.to(all_mask.device) + 1 # gpu
+        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
+        #print(kl_gold, kl_gold.size())
+        """ 
+        gold_labels = torch.zeros(self.num_classes, length, device=all_mask.device)
+        ones_labels = torch.ones(verb_labels.size(), device=all_mask.device)
+        gold_labels.scatter_add_(0, verb_labels, ones_labels)
+         
+        # ignore non-argument label
+        kl_gold = torch.sum(gold_labels, -1) + 1.
+        print(kl_gold, kl_gold.size())
+        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
+        print(kl_gold, kl_gold.size())
+        """ 
+        kl_pseu = torch.sum(batch_probs, 0) + 1.
+        kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
+        #print(kl_pseu, kl_pseu.size())
+        
+        kl_loss = kl_gold * torch.log(kl_gold / kl_pseu)
+        #print(kl_loss, kl_loss.size())
+        kl_loss = torch.sum(kl_loss)
+        #print(kl_loss) 
+        return kl_loss
+
+    def _argmax_logits(self, 
+                       logits: torch.Tensor, 
+                       mask: torch.Tensor, 
+                       argument_indices: torch.Tensor = None) -> torch.Tensor:
+        sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
+        if logits.dim() < 3: # fake batch size
+            logits.unsqueeze(0)
+        batch_size, sequence_length, _ = logits.size()
+
+        self.temperature.data.clamp_(min = self.minimum_temperature)
+
+        class_probs = F.gumbel_softmax(
+            torch.log(logits.view(-1, self.num_classes) + self.minimum), 
+            tau = self.temperature,
+            hard = True).view([batch_size, sequence_length, self.num_classes]) 
+        
+        embedded_labels =self.embedding_dropout(
+            torch.matmul(class_probs, self.label_embedder.weight)) 
+        _, max_likelihood_sequence = torch.max(class_probs, -1)
+        for i, length in enumerate(sequence_lengths):
+            max_likelihood_sequence[i, length:] = 0
+        return class_probs, max_likelihood_sequence, embedded_labels 
+
+    def add_outputs(self, 
+                    pivot: int,
+                    srl_frames: torch.Tensor,
+                    logits: torch.Tensor,
+                    mask: torch.Tensor,
+                    reconstruction_loss: bool,
+                    output_dict: Dict[str, torch.Tensor], 
+                    metadata: List[Dict[str, Any]]):
+        if reconstruction_loss:
+            if srl_frames is None:
+                raise ConfigurationError("Prediction loss required but gold labels `srl_frames` is None.")
+            gold_labels = srl_frames[pivot:, :] # 0 or batch_size
+            rec_loss = sequence_cross_entropy_with_logits(logits,
+                                                          gold_labels,
+                                                          mask,
+                                                          label_smoothing=self._label_smoothing)
+            if not self.ignore_span_metric:
+                self.span_metric(logits, gold_labels, mask)
+            output_dict["rec_loss"] = rec_loss
+
         if metadata is not None: 
             list_lemmas, list_tokens, list_pos_tags, list_head_ids, list_predicates, list_predicate_indexes = \
                                 zip(*[(x["lemmas"], x["tokens"], x["pos_tags"], x["head_ids"], \
                                     x["predicate"], x["predicate_index"], ) for x in metadata])
-         
-        if self.training:
-            class_probs, noun_labels, embedded_noun_labels, kl_loss = \
-                self._argmax_logits(class_probabilities, used_mask, retrive_generator_loss)
-            #noun_labels = self._logits_to_index(class_probabilities, used_mask) 
-            output_dict["kl_loss"] = kl_loss
-            output_dict["bp_loss"] = self._regularize_batch(class_probs, 
-                                                            srl_frames[:batch_size, :], 
-                                                            mask, batch_size, length, retrive_generator_loss) 
-
-            predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
-            full_label_masks = mask.clone() # srl label masks
-            """ 
-            print('\nlemmas: ', lemmas)
-            print('predicted_labels: ', noun_labels, noun_labels.requires_grad)
-            print('srl_frames: ', srl_frames, srl_frames.requires_grad)
-            """
-            if self.mask_empty_labels:
-                # mask out empty labels 
-                full_label_masks[predicted_labels == 0] = 0
-            else:
-                # use a special lemma embedding empty labels
-                lemmas = lemmas['lemmas']
-                lemmas = lemmas * (predicted_labels != 0).long()
-                lemmas = lemmas + (predicted_labels == 0).long() * self.null_lemma_idx
-                lemmas = {'lemmas': lemmas}
-            """
-            print('masked lemmas:', lemmas)
-            print('label_masks ', full_label_masks, full_label_masks.requires_grad)
-            """
-            embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
-            embedded_verb_lemmas = embedded_lemma_input[:batch_size, :] 
-            embedded_noun_lemmas = embedded_lemma_input[batch_size:, :] 
-                
-            #embedded_noun_labels = self.embedding_dropout(self.label_embedder(noun_labels))
-            embedded_verb_labels = self.embedding_dropout(self.label_embedder(srl_frames[:batch_size, :]))
-            if self.use_label_indicator:
-                label_indicator = self.label_indicator(srl_frames[:batch_size, :]) 
-                embedded_verb_labels = torch.cat([embedded_verb_labels, label_indicator], -1)
-            """
-            print('\nembedded_labels: {}\n'.format(embedded_verb_labels))
-            print('\nembedded_size: {}\n'.format(embedded_verb_labels.size()))
-            print('\nlabel_sequence:\n{}'.format(srl_frames[:batch_size, :]))
-            import sys
-            sys.exit(0)
-            """
-            gan_loss_input = {'v_embedded_tokens': embedded_verb_tokens,
-                              'v_embedded_lemmas': embedded_verb_lemmas,
-                              'v_embedded_predicates': embedded_verb_predicates,
-                              'v_embedded_labels': embedded_verb_labels,
-                              'n_embedded_tokens': embedded_noun_tokens,
-                              'n_embedded_lemmas': embedded_noun_lemmas,
-                              'n_embedded_predicates': embedded_noun_predicates,
-                              'n_embedded_labels': embedded_noun_labels}
-            self._gan_loss(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
-            
-            #print('\nlogits:\n{}'.format(logits))
-            #print('\ngold_labels:\n{}'.format(srl_frames[batch_size:, :]))
-            #import sys
-            #sys.exit(0)
-
-            # assumming we can access gold labels for nominal part
-            if reconstruction_loss:
-                if srl_frames is None:
-                    raise ConfigurationError("Prediction loss required but gold labels `srl_frames` is None.")
-                gold_labels = srl_frames[batch_size:, :]
-                rec_loss = sequence_cross_entropy_with_logits(logits,
-                                                              gold_labels,
-                                                              used_mask,
-                                                              label_smoothing=self._label_smoothing)
-                if not self.ignore_span_metric:
-                    self.span_metric(class_probabilities, gold_labels, used_mask)
-                output_dict["rec_loss"] = rec_loss
-            
-            if metadata is not None:
-                output_dict["tokens"] = list(list_tokens)[batch_size:]
-                output_dict["lemmas"] = list(list_lemmas)[batch_size:]
-                output_dict["pos_tags"] = list(list_pos_tags)[batch_size:]
-                output_dict["head_ids"] = list(list_head_ids)[batch_size:]
-                output_dict["predicate"] = list(list_predicates)[batch_size:]
-                output_dict["predicate_index"] = list(list_predicate_indexes)[batch_size:]
-
-        else: # not training
-            if reconstruction_loss:
-                if srl_frames is None:
-                    raise ConfigurationError("Prediction loss required but gold labels `srl_frames` is None.")
-                loss = sequence_cross_entropy_with_logits(logits,
-                                                          srl_frames,
-                                                          used_mask,
-                                                          label_smoothing=self._label_smoothing)
-                if not self.ignore_span_metric:
-                    self.span_metric(class_probabilities, srl_frames, mask)
-                output_dict["rec_loss"] = loss
-        
-            if metadata is not None:
-                output_dict["tokens"] = list(list_tokens)
-                output_dict["lemmas"] = list(list_lemmas)
-                output_dict["pos_tags"] = list(list_pos_tags)
-                output_dict["head_ids"] = list(list_head_ids)
-                output_dict["predicate"] = list(list_predicates)
-                output_dict["predicate_index"] = list(list_predicate_indexes)
-                """
-                print('\n', output_dict["tokens"], '\n',
-                        output_dict["lemmas"], '\n',
-                        output_dict["pos_tags"], '\n',
-                        output_dict["head_ids"], '\n',
-                        output_dict["predicate_index"], '\n')
-                """
-        return output_dict
+            output_dict["tokens"] = list(list_tokens)[pivot:]
+            output_dict["lemmas"] = list(list_lemmas)[pivot:]
+            output_dict["pos_tags"] = list(list_pos_tags)[pivot:]
+            output_dict["head_ids"] = list(list_head_ids)[pivot:]
+            output_dict["predicate"] = list(list_predicates)[pivot:]
+            output_dict["predicate_index"] = list(list_predicate_indexes)[pivot:]
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -317,7 +475,7 @@ class GanSemanticRoleLabeler(Model):
         """
         all_predictions = output_dict['class_probabilities']
         sequence_lengths = get_lengths_from_binary_sequence_mask(output_dict["mask"]).data.tolist()
-        
+        # discard useless staff in the output dict 
         returned_dict = {"tokens": output_dict["tokens"], 
                          "lemmas": output_dict["lemmas"],
                          "pos_tags": output_dict["pos_tags"],
@@ -342,204 +500,15 @@ class GanSemanticRoleLabeler(Model):
             all_tags.append(tags)
         returned_dict["srl_tags"] = all_tags
         return returned_dict
-    
-    def _regularize_batch(self, 
-                          noun_class_probs: torch.Tensor, 
-                          verb_labels: torch.Tensor,
-                          all_mask: torch.Tensor,
-                          batch_size: int,
-                          length: int,
-                          retrive_generator_loss: bool=False):
-        if not self.regularized_batch or not retrive_generator_loss:
-            return None
-
-        verb_mask = all_mask[:batch_size, :]
-        noun_mask = all_mask[batch_size:, :]
-        
-        class_probs = noun_class_probs * noun_mask.unsqueeze(-1).float() 
-        batch_probs = torch.sum(class_probs, 1)
-
-        verb_labels = verb_labels * verb_mask
-        
-        gold_labels = torch.zeros(self.num_classes, length, device=all_mask.device)
-        ones_labels = torch.ones(verb_labels.size(), device=all_mask.device)
-        gold_labels.scatter_add_(0, verb_labels, ones_labels)
-         
-        # ignore non-argument label
-        kl_gold = torch.sum(gold_labels, -1) + 1.
-        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
-        #print(kl_gold, kl_gold.size())
-        
-        kl_pseu = torch.sum(batch_probs, 0) + 1.
-        kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
-        #print(kl_pseu, kl_pseu.size())
-        
-        kl_loss = kl_gold * torch.log(kl_gold / kl_pseu)
-        #print(kl_loss, kl_loss.size())
-        kl_loss = torch.sum(kl_loss)
-        #print(kl_loss) 
-        #import sys
-        #sys.exit(0)
-        return kl_loss
-
-    def _gan_loss(self, 
-                  input_dict: Dict[str, torch.Tensor], 
-                  mask: torch.Tensor, 
-                  output_dict: Dict[str, Any],
-                  retrive_generator_loss: bool,
-                  return_without_computation: bool = False) -> None:
-        if return_without_computation:
-            default_value = torch.tensor(0.0, dtype=torch.float, device=mask.device)
-            if retrive_generator_loss:
-                output_dict['gen_loss'] = default_value 
-            else:
-                output_dict['dis_loss'] = default_value
-            return None
-
-        embedded_noun_tokens = input_dict['n_embedded_tokens']
-        embedded_noun_lemmas = input_dict['n_embedded_lemmas']
-        embedded_noun_predicates = input_dict['n_embedded_predicates']
-        embedded_noun_labels = input_dict['n_embedded_labels']
-        
-        batch_size = embedded_noun_tokens.size(0)
-        
-        noun_features = [embedded_noun_predicates, 
-                         embedded_noun_labels, 
-                         embedded_noun_lemmas]
-        embedded_noun = torch.cat(noun_features, -1)
-        
-        """ 
-        for k, v in input_dict.items():
-            print('\n{} = {}'.format(k, v.size()) )
-
-        print(embedded_noun.size()) 
-        """
-        
-        if retrive_generator_loss:
-            mask = mask[batch_size:]
-            logits = self.srl_encoder(embedded_noun, mask)  
-
-            if self.use_wgan:
-                gen_loss = -torch.mean(logits)                
-            else:
-                # fake labels 
-                real_labels = mask[:, 0].detach().clone().fill_(1).float()
-                gen_loss = F.binary_cross_entropy(logits, real_labels, reduction='mean')
-            output_dict['gen_loss'] = gen_loss
-        else:
-            embedded_verb_tokens = input_dict['v_embedded_tokens']
-            embedded_verb_lemmas = input_dict['v_embedded_lemmas']
-            embedded_verb_predicates = input_dict['v_embedded_predicates']
-            embedded_verb_labels = input_dict['v_embedded_labels']
-            
-            verb_features = [embedded_verb_predicates,
-                             embedded_verb_labels,
-                             embedded_verb_lemmas]
-
-            embedded_verb = torch.cat(verb_features, -1)
-            #embedded_input = torch.cat([embedded_verb, embedded_noun], 0)
-
-            #logits = self.srl_encoder(embedded_input, mask)
-            mask_noun = mask[batch_size:]
-            logits_noun = self.srl_encoder(embedded_noun, mask_noun) 
-            
-            mask_verb = mask[:batch_size]
-            logits_verb = self.srl_encoder(embedded_verb, mask_verb)
-
-            if self.use_wgan:
-                dis_loss = -torch.mean(logits_verb) + torch.mean(logits_noun) 
-            else:
-                # fake labels
-                fake_labels = mask[:batch_size, 0].detach().clone().fill_(0).float()
-                real_labels = mask[:batch_size, 0].detach().clone().fill_(1).float()
-                
-                #dis_loss = F.binary_cross_entropy(logits[:batch_size], real_labels, reduction='mean') \
-                #         + F.binary_cross_entropy(logits[batch_size:], fake_labels, reduction='mean') 
-                dis_loss = F.binary_cross_entropy(logits_verb, real_labels, reduction='mean') \
-                         + F.binary_cross_entropy(logits_noun, fake_labels, reduction='mean') 
-            output_dict['dis_loss'] = dis_loss / 2 
-        return None 
-       
-    def _argmax_logits(self, logits: torch.Tensor, mask: torch.Tensor, retrive_generator_loss: bool=False) -> torch.Tensor:
-        sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
-        if logits.dim() < 3: # fake batch size
-            logits.unsqueeze(0)
-        
-        batch_size, sequence_length, _ = logits.size()
-
-        self.temperature.data.clamp_(min = self.minimum_temperature)
-
-        class_probs = F.gumbel_softmax(
-            torch.log(logits.view(-1, self.num_classes) + self.minimum), 
-            tau = self.temperature,
-            hard = True).view([batch_size, sequence_length, self.num_classes]) 
-        
-        #print('\ngumbel_softmax:\n{}'.format(class_probs))
-        #print('\ngumbel_size: {}\n'.format(class_probs.size()))
-        
-        #print(self.label_embedder.weight)
-        """         
-        print()
-        _, max_likelihood_sequence = torch.max(logits, -1)
-        for i, length in enumerate(sequence_lengths):
-            max_likelihood_sequence[i, length:] = 0
-            tags = [self.vocab.get_token_from_index(x.item(), namespace="srl_tags")
-                    for x in max_likelihood_sequence[i, :]]
-            print(tags)
-        print('\nmax_ll_sequence:\n{}'.format(max_likelihood_sequence))
-        """
-        
-        embedded_labels =self.embedding_dropout(
-            torch.matmul(class_probs, self.label_embedder.weight)) 
-        _, max_likelihood_sequence = torch.max(class_probs, -1)
-        for i, length in enumerate(sequence_lengths):
-            max_likelihood_sequence[i, length:] = 0
-        
-        if self.use_label_indicator:
-            label_indicator = self.label_indicator(max_likelihood_sequence)    
-            embedded_labels = torch.cat([embedded_labels, label_indicator], -1)
-
-        if self.regularized_labels and retrive_generator_loss:
-            class_probs = class_probs * mask.unsqueeze(-1).float() 
-            batch_probs = torch.sum(class_probs, 1)
-            
-            batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
-
-            kl_loss = torch.log(batch_probs) * batch_probs
-            
-            if self.label_loss_type == 'reverse_kl':
-                # (k/n) ln ((k/n)/(1/n))
-                divider = 1. / torch.sum(mask, -1).float() 
-                kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
-            elif self.label_loss_type == 'unscale_kl':
-                pass # k ln ((k/n)/(1/n))  
-            else:
-                pass
-            kl_loss = kl_loss[:, 1:] # discard the loss for empty labels
-
-            loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level
-            #loss = torch.mean(kl_loss[kl_loss > 0]) # loss at token level 
-        else:
-            loss = None 
-
-        #print('\nembedded_labels: {}\n'.format(embedded_labels))
-        #print('\nembedded_size: {}\n'.format(embedded_labels.size()))
-        #print('\nlabel_sequence:\n{}'.format(max_likelihood_sequence))
-        #import sys
-        #sys.exit(0)
-        return class_probs, max_likelihood_sequence, embedded_labels, loss 
-
 
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """ Sub-procedure for decoding. 
+        """ Deprecated: Sub-procedure for decoding. 
         """
         sequence_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
         if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
         _, max_likelihood_sequence = torch.max(logits, -1)
         
-        #print('\npredicted_labels:\n{}'.format(max_likelihood_sequence))
-
         for i, length in enumerate(sequence_lengths):
             # FIX ME: assumming 0 as empty label
             labels = max_likelihood_sequence[i, :length]
@@ -552,33 +521,11 @@ class GanSemanticRoleLabeler(Model):
             #print('--sample {: >{}} times'.format(n, 3))
             max_likelihood_sequence[i, :length] = labels 
             max_likelihood_sequence[i, length:] = 0 
-        
-        #print('\nresampled_labels:\n{}'.format(max_likelihood_sequence))
-        #import sys
-        #sys.exit(0)
         return max_likelihood_sequence
-        
-        """
-        if logits.dim() == 3:
-            batch_size, length, _ = logits.size()
-            predictions_list = [logits[i].detach().cpu() for i in range(batch_size)]
-        else:
-            batch_size, length = 1, logits.size(0)
-            predictions_list = [logits]
-            
-        all_labels = torch.zeros([batch_size, length], dtype=torch.long)
-        # FIX ME: assuming 0 is the index of the empty label, but the data reader does not ensure this. 
-        for i, (predictions, length) in enumerate(zip(predictions_list, sequence_lengths)):
-            _, max_likelihood_sequence = torch.max(predictions[:length], 1) 
-            all_labels[i, :length] = max_likelihood_sequence
-        return all_labels
-        print(all_labels)
-        """
 
     def get_metrics(self, reset: bool = False):
         if self.ignore_span_metric:
-            # Return an empty dictionary if ignoring the
-            # span metric
+            # Return an empty dictionary if ignoring the span metric
             return {}
         else:
             metric_dict = self.span_metric.get_metric(reset=reset)
