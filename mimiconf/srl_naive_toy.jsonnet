@@ -123,11 +123,11 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 3 
+    "batch_size": 5 
   },
   "trainer": {
     "type": "srl_gan",
-    "num_epochs": 1,
+    "num_epochs": 5,
     "grad_clipping": 1.0,
     "patience": 20,
     "shuffle": false,
@@ -140,6 +140,7 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
+    "sort_by_length": true,
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 4,

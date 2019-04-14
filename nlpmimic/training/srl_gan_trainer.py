@@ -92,6 +92,7 @@ class GanSrlTrainer(Trainer):
                  bpr_loss_scalar: float = 1.,
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
+                 sort_by_length: bool = False,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
                  gen_max_nbatch: int = 0,
@@ -166,6 +167,8 @@ class GanSrlTrainer(Trainer):
         self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
         
+        self.sort_by_length = sort_by_length
+        
         self.consecutive_update = consecutive_update
         self.dis_max_nbatch = dis_max_nbatch
         self.gen_max_nbatch = gen_max_nbatch
@@ -187,6 +190,13 @@ class GanSrlTrainer(Trainer):
             samples += instances[0 : batch_size - nsample]
             self.data_y_pivot = 0
             random.shuffle(instances)
+            if self.sort_by_length: # sort
+                instances[:] = sort_by_padding(instances, 
+                                            self.iterator._sorting_keys,
+                                            self.iterator.vocab,
+                                            self.iterator._padding_noise,
+                                            reverse=True)
+                print('\n>>>>>>>Y={}\n'.format(len(self.train_dy_data)))
         else:
             self.data_y_pivot += batch_size
         return samples
@@ -203,6 +213,13 @@ class GanSrlTrainer(Trainer):
     def _create_batches(self, num_epochs: int = 1) -> Iterator[TensorDict]:
         def _iterate(instances: Iterable[Instance]):
             random.shuffle(instances)
+            if self.sort_by_length: # sort
+                instances[:] = sort_by_padding(instances, 
+                                            self.iterator._sorting_keys,
+                                            self.iterator.vocab,
+                                            self.iterator._padding_noise,
+                                            reverse=True)
+                print('\n>>>>>>>X={}\n'.format(len(self.train_dx_data)))
             yield from instances
         # the above code mimics the valid input to `lazy_groups_of` 
         if self.train_data is not None:
@@ -276,12 +293,12 @@ class GanSrlTrainer(Trainer):
                 output_dict = self.model.decode(output_dict)
                 tokens = output_dict['tokens'][:5]
                 labels = output_dict['srl_tags'][:5]
+                gold_labels = output_dict['pos_tags'][:5]
                 predicates = output_dict["predicate"]
                 pindexes = output_dict["predicate_index"]
-                for token, label, p, pid in zip(tokens, labels, predicates, pindexes):
-                    xx = ['({}, {})'.format(t, l) for t, l in zip(token, label)]
+                for token, label, glabel, p, pid in zip(tokens, labels, gold_labels, predicates, pindexes):
+                    xx = ['({}: {}_{})'.format(t, l, g) for t, l, g in zip(token, label, glabel)]
                     print('{} {}.{}\n'.format(xx, p, pid))
-                    #print('\n{}\n{}'.format(token, label))
         except KeyError:
             if for_training:
                 raise RuntimeError("The model you are trying to optimize does not contain a"
@@ -803,6 +820,9 @@ class GanSrlTrainer(Trainer):
         consecutive_update = params.pop("consecutive_update", False)
         dis_max_nbatch = params.pop("dis_max_nbatch", 1)
         gen_max_nbatch = params.pop("gen_max_nbatch", 1)
+
+        # process input data
+        sort_by_length = params.pop("sort_by_length", False)
         
         # parameters for wgan
         clip_val = params.pop("clip_val", 5.0)
@@ -897,6 +917,7 @@ class GanSrlTrainer(Trainer):
                    bpr_loss_scalar = bpr_loss_scalar,
                    use_wgan = use_wgan,
                    clip_val = clip_val,
+                   sort_by_length = sort_by_length,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
                    gen_max_nbatch = gen_max_nbatch,
