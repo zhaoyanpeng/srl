@@ -86,6 +86,8 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                 train_dx_nyt_data = ensure_list(train_dx_nyt_data)
                 nytimes_reader.allow_null_predicate = allow_null_predicate
                 train_dx_data += train_dx_nyt_data # combine nytimes with gold
+            else:
+                params.pop('train_dx_appendix_path', None)
 
         datasets: Dict[str, Iterable[Instance]] = {"train_dx": train_dx_data,
                                                    "train_dy": train_dy_data}

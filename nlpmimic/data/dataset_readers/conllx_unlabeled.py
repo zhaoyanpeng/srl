@@ -16,6 +16,7 @@ from allennlp.data.instance import Instance
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token
 
+from nlpmimic.data.fields import IndexField
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -41,11 +42,14 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic' # srl_gan
     _DEFAULT_APPENDIX_TYPE = 'nyt_infer' # nyt_learn
+    _MAX_NUM_ARGUMENT = 7 
 
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
                  lemma_indexers: Dict[str, TokenIndexer] = None,
                  feature_labels: Sequence[str] = (),
+                 maximum_length: float = float('inf'),
+                 valid_srl_labels: Sequence[str] = (),
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
@@ -57,6 +61,9 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             if label not in self._VALID_LABELS: 
                 raise ConfigurationError("unknown feature label type: {}".format(label))
         
+        self.maximum_length = maximum_length
+        self.valid_srl_labels = valid_srl_labels
+
         self.feature_labels = set(feature_labels)
         self.move_preposition_head = move_preposition_head
         self.allow_null_predicate = allow_null_predicate
@@ -78,6 +85,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             dep_rels = sentence.dep_rels
             #cnt += 1
             #print('\n{}\n{}\n'.format(cnt, sentence.format()))
+            if len(tokens) > self.maximum_length:
+                continue
             if self.move_preposition_head:
                 sentence.move_preposition_head()
             
@@ -135,6 +144,60 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         """
         We take `pre-tokenized` input here, because we don't have a tokenizer in this class.
         """
+        if self.instance_type == "srl_graph":
+            # pylint: disable=arguments-differ
+            fields: Dict[str, Field] = {}
+            text_field = TextField(tokens, token_indexers=self._token_indexers)
+            fields['tokens'] = text_field
+            
+            lemma_tokens = [Token(t) for t in lemmas]
+            lemma_field = TextField(lemma_tokens, token_indexers=self._lemma_indexers)
+            fields['lemmas'] = lemma_field
+            
+            predicate_tokens = [self._DUMMY if i == 0 else predicate for i in predicate_indicators]
+            fields['predicates'] = SequenceLabelField(predicate_tokens, text_field, 'predicates')
+            
+            fields['srl_frames'] = SequenceLabelField(labels, text_field, 'srl_tags')
+            fields['predicate_indicators'] = SequenceLabelField(predicate_indicators, text_field)
+
+            argument_indices = [i for i, label in enumerate(labels) if label != self._EMPTY_LABEL]
+            num_argument = len(argument_indices)
+            if num_argument >= self._MAX_NUM_ARGUMENT:
+                argument_indices = argument_indices[:self._MAX_NUM_ARGUMENT]
+                argument_mask = [1] * self._MAX_NUM_ARGUMENT
+            else:
+                non_argument_idx = 0
+                #non_argument_idx = labels.index(self._EMPTY_LABEL)
+                num_pad = self._MAX_NUM_ARGUMENT - num_argument
+                argument_indices += [non_argument_idx] * num_pad 
+                argument_mask = [1] * num_argument + [0] * num_pad 
+
+            fields['argument_indices'] = IndexField(argument_indices, fields['srl_frames'])
+            fields['predicate_index'] = IndexField([predicate_index], fields['predicates']) 
+            fields['argument_mask'] = IndexField(argument_mask, fields['argument_indices'])
+
+            metadata = {'tokens': [x.text for x in tokens],
+                        'lemmas': lemmas,
+                        'predicate': predicate,
+                        'predicate_index': predicate_index,
+                        'predicate_sense': predicate_sense}
+            
+            if 'pos' in self.feature_labels and not pos_tags:
+                raise ConfigurationError("Dataset reader was specified to use pos_tags as "
+                                         "features. Pass them to text_to_instance.")
+            if 'dep' in self.feature_labels and (not head_ids or not dep_rels):
+                raise ConfigurationError("Dataset reader was specified to use dep_rels as "
+                                         "features. Pass head_ids and dep_rels to text_to_instance.")
+
+            if 'pos' in self.feature_labels and pos_tags:
+                metadata['pos_tags'] = pos_tags
+            if 'dep' in self.feature_labels and head_ids and dep_rels:
+                metadata['head_ids'] = head_ids
+                metadata['dep_rels'] = dep_rels
+            
+            fields['metadata'] = MetadataField(metadata)
+            return Instance(fields)
+
         if self.instance_type == self._DEFAULT_INSTANCE_TYPE:
             # pylint: disable=arguments-differ
             fields: Dict[str, Field] = {}
@@ -304,7 +367,10 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                 if not span_labels:
                     span_labels = [[] for _ in columns[9:]]
                 for column, item in zip(span_labels, columns[9:]):
-                    column.append(item if item != self._DUMMY else self._EMPTY_LABEL)
+                    item = item if item != self._DUMMY else self._EMPTY_LABEL
+                    if self.valid_srl_labels:
+                        item = item if item in self.valid_srl_labels else self._EMPTY_LABEL
+                    column.append(item)
             
             span_labels = [[self._EMPTY_LABEL] * len(tokens) for _ in predicates]
             srl_frames = [(idx, predicate, labels) for (idx, predicate), labels 
@@ -351,7 +417,10 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                 if not span_labels:
                     span_labels = [[] for _ in columns[9:]]
                 for column, item in zip(span_labels, columns[9:]):
-                    column.append(item if item != self._DUMMY else self._EMPTY_LABEL)
+                    item = item if item != self._DUMMY else self._EMPTY_LABEL
+                    if self.valid_srl_labels:
+                        item = item if item in self.valid_srl_labels else self._EMPTY_LABEL
+                    column.append(item)
             
             srl_frames = [(idx, predicate, labels) for (idx, predicate), labels 
                                      in zip(predicates, span_labels)]

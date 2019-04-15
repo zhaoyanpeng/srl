@@ -308,6 +308,8 @@ class Conll2009DatasetReader(DatasetReader):
                  token_indexers: Dict[str, TokenIndexer] = None,
                  lemma_indexers: Dict[str, TokenIndexer] = None,
                  feature_labels: Sequence[str] = (),
+                 maximum_length: float = float('inf'),
+                 valid_srl_labels: Sequence[str] = (),
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
@@ -319,6 +321,9 @@ class Conll2009DatasetReader(DatasetReader):
             if label not in self._VALID_LABELS: 
                 raise ConfigurationError("unknown feature label type: {}".format(label))
         
+        self.maximum_length = maximum_length
+        self.valid_srl_labels = valid_srl_labels
+
         self.feature_labels = set(feature_labels)
         self.move_preposition_head = move_preposition_head
         self.allow_null_predicate = allow_null_predicate
@@ -337,6 +342,8 @@ class Conll2009DatasetReader(DatasetReader):
             dep_rels = sentence.dep_rels
             #cnt += 1
             #print('\n{}\n{}\n'.format(cnt, sentence.format()))
+            if len(tokens) > self.maximum_length:
+                continue
             if self.move_preposition_head:
                 sentence.move_preposition_head()
             
@@ -611,7 +618,10 @@ class Conll2009DatasetReader(DatasetReader):
             if not span_labels:
                 span_labels = [[] for _ in columns[14:]]
             for column, item in zip(span_labels, columns[14:]):
-                column.append(item if item != self._DUMMY else self._EMPTY_LABEL)
+                item = item if item != self._DUMMY else self._EMPTY_LABEL
+                if self.valid_srl_labels:
+                    item = item if item in self.valid_srl_labels else self._EMPTY_LABEL
+                column.append(item)
         
         srl_frames = [(idx, predicate, labels) for (idx, predicate), labels 
                                  in zip(predicates, span_labels)]

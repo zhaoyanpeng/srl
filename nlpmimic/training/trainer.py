@@ -60,10 +60,10 @@ class TrainerPieces(NamedTuple):
                      if key in datasets_for_vocab_creation)
             )
 
+        print(vocab._index_to_token['srl_tags'])
         """ 
         print(vocab._index_to_token['lemmas'])
         print(vocab._index_to_token['tokens'])
-        print(vocab._index_to_token['srl_tags'])
         print(vocab._index_to_token['predicates'])
         import sys
         sys.exit(0)
@@ -115,8 +115,25 @@ class TrainerPieces(NamedTuple):
         logger.info("Following parameters are Tunable (with gradient):")
         for name in tunable_parameter_names:
             logger.info(name)
+        
+        #TrainerPieces.check_data(train_dx_data)
+        #TrainerPieces.check_data(train_dy_data, vocab)
+        #import sys
+        #sys.exit(0)
 
         return TrainerPieces(model, iterator,
                              train_data, train_dx_data, train_dy_data,
                              validation_data, test_data, validation_iterator, 
                              rec_in_training, trainer_params, discriminator_param_name)
+    
+    @staticmethod
+    def check_data(instances: Iterable[Instance], vocab: Vocabulary = None):
+        max_length = 0
+        for instance in instances:
+            this_length = len(instance.fields['tokens'])
+            if this_length > max_length:
+                max_length = this_length 
+        print('----maximum length of the instances: {}'.format(max_length))
+        if vocab:
+            print(vocab._index_to_token['srl_tags'])
+

@@ -10,7 +10,7 @@
     "valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "AM-EXT", "AM-NEG", "AM-ADV", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
-    "instance_type": "srl_gan",
+    "instance_type": "srl_graph",
     "token_indexers": {
         "elmo": {
             "type": "elmo_characters"
@@ -23,7 +23,7 @@
     "valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "AM-EXT", "AM-NEG", "AM-ADV", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": false,
-    "instance_type": "srl_gan",
+    "instance_type": "srl_graph",
     "token_indexers": {
         "elmo": {
             "type": "elmo_characters"
@@ -31,8 +31,9 @@
     }
   },
   "reader_mode": "srl_nyt",
-  "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
-  "add_unlabeled_noun": true,
+  //"dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
+  "dis_param_name": ["srl_encoder", "predicate_embedder"],
+  "add_unlabeled_noun": false,
 
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only",
@@ -41,6 +42,7 @@
   "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytmorphs/nytimes.verb.only.part0-0",
   
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
   "model": {
@@ -60,20 +62,21 @@
         "lemmas": {
             "type": "embedding",
             "embedding_dim": 100,
-            "pretrained_file": "/disk/scratch1/s1847450/data//lemmata/en.lemma.100.20.vec.morph",
+            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
             "vocab_namespace": "lemmas",
             "trainable": false 
         }
       }
     },
     "label_embedder": {
+      // ignored in `graph` mode
       "embedding_dim": 300,
       "vocab_namespace": "srl_tags",
       "trainable": true,
       "sparse": false 
     },
     "predicate_embedder": {
-      "embedding_dim": 200,
+      "embedding_dim": 100,
       "vocab_namespace": "predicates",
       "trainable": true, 
       "sparse": false 
@@ -87,15 +90,12 @@
       "use_highway": true
     },
     "srl_encoder": {
-      "type": "srl_naive_dis",
-      "module_choice": "c",
-      "embedding_dim": 600,
-      //"embedding_dim": 554,
-      "projected_dim": 200,
-      "hidden_size": 200,
-      "attent_size": 200,
-      "num_layer": 1,
-      "num_model": 0 
+      "type": "srl_graph_dis",
+      "layer_timesteps": [2, 2, 2, 2],
+      "residual_connection_layers": {"2": [0], "3": [0, 1]},
+      "node_msg_dropout": 0.3,
+      "residual_dropout": 0.3,
+      "aggregation_type": "c",
     },
     "initializer": [
       [
@@ -105,7 +105,6 @@
         }
       ]
     ],
-
     "type": "srl_graph",
     "binary_feature_dim": 100, 
     "temperature": 1,
@@ -132,7 +131,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
