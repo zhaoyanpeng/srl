@@ -6,6 +6,8 @@
   },
   "dataset_reader": {
     "type":"conll2009",
+    //"maximum_length": 80,
+    //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "AM-EXT", "AM-NEG", "AM-ADV", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
     "instance_type": "srl_gan",
@@ -23,9 +25,15 @@
   //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
   //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
   //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only.sel",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun.sel",
+
+  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only",
+  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only",
+  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun",
+
   //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -97,6 +105,7 @@
     "fixed_temperature": false,
     "mask_empty_labels": false, 
     //"use_label_indicator": true,
+    "optimize_lemma_embedding": true,
     "zero_null_lemma_embedding": true,
     
     "label_loss_type": "unscale_kl",
@@ -106,18 +115,18 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 54,
+    "batch_size": 64,
     "padding_noise": 0.0
   },
   "trainer": {
     "type": "srl_gan",
     "num_epochs": 500,
     "grad_clipping": 1.0,
-    "patience": 50,
+    "patience": 150,
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -125,7 +134,7 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
-    "consecutive_update": true,
+    "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 8,
     "optimizer": {

@@ -32,6 +32,7 @@ class GraphSemanticRoleLabeler(Model):
                  mask_empty_labels: bool = True,
                  embedding_dropout: float = 0.,
                  use_label_indicator: bool = False,
+                 optimize_lemma_embedding: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  label_loss_type: str = 'reverse_kl',
                  regularized_labels: List[str] = None,
@@ -62,7 +63,10 @@ class GraphSemanticRoleLabeler(Model):
             # when the weight is trainable, and further result in errors in optimizer cause the
             # optimizer expects only leaf nodes.
             embedder = getattr(self.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
-            embedder.weight[self.null_lemma_idx, :] = 0.
+            embedder.weight[self.null_lemma_idx, :].fill_(0.)
+            #embedder.weight[self.null_lemma_idx, :] = 0.
+            if optimize_lemma_embedding:
+                embedder.weight.requires_grad_()
             """ 
             idx = {'lemmas': torch.tensor(self.null_lemma_idx)}
             vec = self.lemma_embedder(idx)
