@@ -412,6 +412,7 @@ class GraphSemanticRoleLabeler(Model):
                 self.span_metric(logits, gold_labels, mask)
             output_dict["rec_loss"] = rec_loss
 
+        output_dict["gold_srl"] = srl_frames[pivot:] # decoded in `decode` for the purpose of debugging
         if metadata is not None: 
             list_lemmas, list_tokens, list_pos_tags, list_head_ids, list_predicates, list_predicate_indexes = \
                                 zip(*[(x["lemmas"], x["tokens"], x["pos_tags"], x["head_ids"], \
@@ -456,6 +457,15 @@ class GraphSemanticRoleLabeler(Model):
                     for x in max_likelihood_sequence]
             all_tags.append(tags)
         returned_dict["srl_tags"] = all_tags
+
+        # gold srl labels
+        gold_srl = []
+        srl_frames = output_dict["gold_srl"]
+        srl_frames = [srl_frames[i].detach().cpu() for i in range(srl_frames.size(0))]
+        for srls in srl_frames:
+            tags = [self.vocab.get_token_from_index(x, namespace="srl_tags") for x in srls.tolist()]
+            gold_srl.append(tags)
+        returned_dict["gold_srl"] =gold_srl 
         return returned_dict
 
     def _logits_to_index(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:

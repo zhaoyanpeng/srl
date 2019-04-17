@@ -293,11 +293,11 @@ class GanSrlTrainer(Trainer):
                 output_dict = self.model.decode(output_dict)
                 tokens = output_dict['tokens'][:5]
                 labels = output_dict['srl_tags'][:5]
-                gold_labels = output_dict['pos_tags'][:5]
+                gold_srl = output_dict['gold_srl'][:5]
                 predicates = output_dict["predicate"]
                 pindexes = output_dict["predicate_index"]
-                for token, label, glabel, p, pid in zip(tokens, labels, gold_labels, predicates, pindexes):
-                    xx = ['({}: {}_{})'.format(t, l, g) for t, l, g in zip(token, label, glabel)]
+                for token, label, glabel, p, pid in zip(tokens, labels, gold_srl, predicates, pindexes):
+                    xx = ['({}|{}: {}_{})'.format(idx, t, g, l) for idx, (t, g, l) in enumerate(zip(token, glabel, label))]
                     print('{} {}.{}\n'.format(xx, p, pid))
         except KeyError:
             if for_training:

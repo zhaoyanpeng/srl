@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_naive_c_1.05_sel_flip_0.0r_morph_nln.5_la3_le1_pr2_tlamma_xy_part0-0"
+model_name="srl_naive_c_1.05_sel_flip_0.0r_morph_nln.5_la3_le1_pr2_tlamma_xy_part0-5"
 param_name="srl_nyt_naive_sel.jsonnet"
 model_path=$droot/model
 
