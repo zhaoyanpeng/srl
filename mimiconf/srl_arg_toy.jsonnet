@@ -11,8 +11,7 @@
     "instance_type": "srl_graph"
     },
   "reader_mode": "srl_gan",
-  //"dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
-  "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder", "label_embedder"],
+  "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
   
   //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
   //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
@@ -107,25 +106,24 @@
         //}
       //]
     ],
-    "type": "srl_graph",
+    "type": "srl_arg",
     "binary_feature_dim": 2, 
     "temperature": 0.01,
     "fixed_temperature": false,
     "mask_empty_labels": false,
     //"use_label_indicator": true,
-    "optimize_lemma_embedding": true,
     "zero_null_lemma_embedding": true,
     
     "label_loss_type": "unscale_kl",
-    "regularized_labels": ["O"],
-    "regularized_nonarg": false,
+    "suppress_nonarg": true,
     "regularized_batch": true,
-    //"suppress_nonarg": true,
+    "regularized_labels": null,
+    "regularized_nonarg": false,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 3 
+    "batch_size": 5 
   },
   "trainer": {
     "type": "srl_gan",

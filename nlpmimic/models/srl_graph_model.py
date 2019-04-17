@@ -35,6 +35,7 @@ class GraphSemanticRoleLabeler(Model):
                  optimize_lemma_embedding: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  label_loss_type: str = 'reverse_kl',
+                 regularized_batch: bool = False,
                  regularized_labels: List[str] = None,
                  regularized_nonarg: bool = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -46,6 +47,7 @@ class GraphSemanticRoleLabeler(Model):
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
         self.mask_empty_labels = mask_empty_labels
+        self.regularized_batch = regularized_batch
         
         self.seq_encoder = seq_encoder
         self.srl_encoder = srl_encoder
@@ -193,6 +195,7 @@ class GraphSemanticRoleLabeler(Model):
                 gan_loss_input = self.create_discriminator_graph_input(
                                                         length,
                                                         batch_size,
+                                                        mask,
                                                         argument_mask,
                                                         used_mask,
                                                         srl_frames,
@@ -200,7 +203,8 @@ class GraphSemanticRoleLabeler(Model):
                                                         class_probabilities, 
                                                         embedded_predicates,
                                                         lemmas,
-                                                        output_dict)
+                                                        output_dict,
+                                                        retrive_generator_loss)
                 self.srl_encoder(gan_loss_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
             else:
                 gan_loss_input, full_label_masks = self.create_discriminator_input(
@@ -224,6 +228,7 @@ class GraphSemanticRoleLabeler(Model):
     def create_discriminator_graph_input(self,
                                          length: int,
                                          batch_size: int,
+                                         mask: torch.Tensor,
                                          argument_mask: torch.Tensor,
                                          used_mask: torch.Tensor,
                                          srl_frames: torch.Tensor,
@@ -231,7 +236,8 @@ class GraphSemanticRoleLabeler(Model):
                                          class_probabilities: torch.Tensor, 
                                          embedded_predicates: torch.Tensor,
                                          lemmas: Dict[str, torch.LongTensor],
-                                         output_dict: Dict[str, torch.Tensor]):
+                                         output_dict: Dict[str, torch.Tensor],
+                                         retrive_generator_loss: bool=False):
         class_probs, noun_labels, _ = \
             self._argmax_logits(class_probabilities, used_mask, argument_indices[batch_size:, :])
         if self.regularized_labels:
@@ -239,6 +245,10 @@ class GraphSemanticRoleLabeler(Model):
                 regularized_nonarg=self.regularized_nonarg, argument_indices=argument_indices[batch_size:, :])
         else:
             output_dict["kl_loss"] = None
+        if self.regularized_batch and retrive_generator_loss: # diversity regularization
+            output_dict["bp_loss"] = self._regularize_batch(length, batch_size, mask, class_probs, srl_frames[:batch_size, :]) 
+        else:
+            output_dict["bp_loss"] = None 
     
         embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
         
@@ -368,6 +378,45 @@ class GraphSemanticRoleLabeler(Model):
         loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level
         #loss = torch.mean(kl_loss[kl_loss > 0]) # loss at token level 
         return loss
+
+    def _regularize_batch(self, 
+                          length: int,
+                          batch_size: int,
+                          all_mask: torch.Tensor,
+                          noun_class_probs: torch.Tensor, 
+                          verb_labels: torch.Tensor):
+        verb_mask = all_mask[:batch_size, :]
+        noun_mask = all_mask[batch_size:, :]
+        
+        class_probs = noun_class_probs * noun_mask.unsqueeze(-1).float() 
+        batch_probs = torch.sum(class_probs, 1)
+        # torch.histc() has been supported on GPU for the latest version of Pytorch   
+        verb_labels = verb_labels * verb_mask
+        verb_labels_cpu = verb_labels.detach().cpu().float()
+        kl_gold = torch.histc(verb_labels_cpu, bins=self.num_classes, min=0, max=self.num_classes - 1)
+        kl_gold = kl_gold.to(all_mask.device) + 1 # gpu
+        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
+        #print(kl_gold, kl_gold.size())
+        """ 
+        gold_labels = torch.zeros(self.num_classes, length, device=all_mask.device)
+        ones_labels = torch.ones(verb_labels.size(), device=all_mask.device)
+        gold_labels.scatter_add_(0, verb_labels, ones_labels)
+         
+        # ignore non-argument label
+        kl_gold = torch.sum(gold_labels, -1) + 1.
+        print(kl_gold, kl_gold.size())
+        kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
+        print(kl_gold, kl_gold.size())
+        """ 
+        kl_pseu = torch.sum(batch_probs, 0) + 1.
+        kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
+        #print(kl_pseu, kl_pseu.size())
+        
+        kl_loss = kl_gold * torch.log(kl_gold / kl_pseu)
+        #print(kl_loss, kl_loss.size())
+        kl_loss = torch.sum(kl_loss)
+        #print(kl_loss) 
+        return kl_loss
 
     def _argmax_logits(self, 
                        logits: torch.Tensor, 

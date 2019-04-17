@@ -17,8 +17,8 @@ from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_deco
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
 
-@Model.register("srl_gan")
-class GanSemanticRoleLabeler(Model):
+@Model.register("srl_arg")
+class ArgSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  token_embedder: TextFieldEmbedder,
                  lemma_embedder: TextFieldEmbedder,
@@ -35,6 +35,7 @@ class GanSemanticRoleLabeler(Model):
                  optimize_lemma_embedding: bool = False,
                  zero_null_lemma_embedding: bool = False, 
                  label_loss_type: str = 'reverse_kl',
+                 suppress_nonarg: bool = False,
                  regularized_batch: bool = False,
                  regularized_labels: List[str] = None,
                  regularized_nonarg: bool = False,
@@ -42,7 +43,7 @@ class GanSemanticRoleLabeler(Model):
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
                  ignore_span_metric: bool = False) -> None:
-        super(GanSemanticRoleLabeler, self).__init__(vocab, regularizer)
+        super(ArgSemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.minimum = 1e-20
         self.minimum_temperature = 1e-5 
@@ -56,8 +57,13 @@ class GanSemanticRoleLabeler(Model):
         self.lemma_embedder = lemma_embedder
         self.label_embedder = label_embedder
         self.predicate_embedder = predicate_embedder
-        
-        self.num_classes = self.vocab.get_vocab_size("srl_tags")
+
+        self.suppress_nonarg = suppress_nonarg
+        if not self.suppress_nonarg:
+            self.num_classes = self.vocab.get_vocab_size("srl_tags")
+        else: # FIXME: assumming non-argument label has id 0, should ensure this in the configuration file
+            self.num_classes = self.vocab.get_vocab_size("srl_tags") - 1
+
         self.null_lemma_idx = self.vocab.get_token_index("NULL_LEMMA", namespace="lemmas")
         
         if zero_null_lemma_embedding:
@@ -100,11 +106,15 @@ class GanSemanticRoleLabeler(Model):
             if self.lemma_embedder.get_output_dim() != self.predicate_embedder.get_output_dim():
                 raise ConfigurationError("Embedding dimensions of lemmas and predicates are not equal")
             srl_encoder.add_gcn_parameters(
-                self.num_classes, 
+                self.num_classes, # FIXME: be careful when discarding the non-argument label 
                 lemma_embedder.get_output_dim()) 
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
-        self.span_metric = DependencyBasedF1Measure(vocab, tag_namespace="srl_tags", ignore_classes=["V"])
+        # FIXME: has been rewritten for discarding the non-argument label
+        self.span_metric = DependencyBasedF1Measure(vocab, 
+                                                    tag_namespace="srl_tags", 
+                                                    unlabeled_vals = self.suppress_nonarg,
+                                                    ignore_classes=["V"])
         self.temperature = torch.nn.Parameter(torch.tensor(temperature), requires_grad=fixed_temperature) 
 
         # There are exactly 2 binary features for the verb predicate embedding.
@@ -195,14 +205,16 @@ class GanSemanticRoleLabeler(Model):
                 gan_loss_input = self.create_discriminator_graph_input(
                                                         length,
                                                         batch_size,
-                                                        argument_mask,
+                                                        mask,
                                                         used_mask,
                                                         srl_frames,
+                                                        argument_mask,
                                                         argument_indices,
                                                         class_probabilities, 
                                                         embedded_predicates,
                                                         lemmas,
-                                                        output_dict)
+                                                        output_dict,
+                                                        retrive_generator_loss)
                 self.srl_encoder(gan_loss_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
             else:
                 gan_loss_input, full_label_masks = self.create_discriminator_input(
@@ -214,27 +226,31 @@ class GanSemanticRoleLabeler(Model):
                                                         class_probabilities, 
                                                         embedded_predicates,
                                                         lemmas,
-                                                        output_dict,
-                                                        retrive_generator_loss)
+                                                        output_dict)
                 self.srl_encoder(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
 
             # assumming we can access gold labels for nominal part
             self.add_outputs(batch_size, srl_frames, logits, used_mask, reconstruction_loss, output_dict, metadata)
         else: # not training
+            if self.suppress_nonarg: 
+                output_dict['arg_masks'] = argument_mask
+                output_dict['arg_idxes'] = argument_indices 
             self.add_outputs(0, srl_frames, logits, used_mask, reconstruction_loss, output_dict, metadata)
         return output_dict
     
     def create_discriminator_graph_input(self,
                                          length: int,
                                          batch_size: int,
-                                         argument_mask: torch.Tensor,
+                                         mask: torch.Tensor,
                                          used_mask: torch.Tensor,
                                          srl_frames: torch.Tensor,
+                                         argument_mask: torch.Tensor,
                                          argument_indices: torch.Tensor,
                                          class_probabilities: torch.Tensor, 
                                          embedded_predicates: torch.Tensor,
                                          lemmas: Dict[str, torch.LongTensor],
-                                         output_dict: Dict[str, torch.Tensor]):
+                                         output_dict: Dict[str, torch.Tensor],
+                                         retrive_generator_loss: bool=False):
         class_probs, noun_labels, _ = \
             self._argmax_logits(class_probabilities, used_mask, argument_indices[batch_size:, :])
         if self.regularized_labels:
@@ -258,12 +274,29 @@ class GanSemanticRoleLabeler(Model):
         edge_types = torch.gather(torch.cat([srl_frames[:batch_size, :], noun_labels], 0), 1, argument_indices)
         edge_types = edge_types * argument_mask
 
+        # FIXME: edge type 0 indicates the non-argument label, but should indicate 
+        # the 1st argument label when the non-argument label is discarded
         verb_edge_types = edge_types[:batch_size, :] 
         noun_edge_types = edge_types[batch_size:, :]
-        
+        if self.suppress_nonarg: 
+            # verbal argument label indexes >= 0; 0 will refer to the 1st argument label
+            # but 0 is as well used as padding number; FIXME: be careful of this ...
+            # we will rely on argument masks to remove padding numbers
+            verb_edge_types = verb_edge_types - 1 
+            verb_edge_types[verb_edge_types < 0] = 0
+            # for decoding
+            output_dict['arg_masks'] = argument_mask[batch_size:]
+            output_dict['arg_idxes'] = argument_indices[batch_size:] 
+
         onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
         noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices[batch_size:, :])
         
+        if self.regularized_batch and retrive_generator_loss: # diversity regularization
+            output_dict["bp_loss"] = self._regularize_batch(length, batch_size, argument_mask, 
+                noun_edge_onehots, edge_types[:batch_size, :]) 
+        else:
+            output_dict["bp_loss"] = None 
+
         graph_input = {'v_embedded_nodes': embedded_verb_nodes,
                        'v_edge_types': verb_edge_types,
                        'v_edge_type_onehots': None, 
@@ -281,18 +314,13 @@ class GanSemanticRoleLabeler(Model):
                                    class_probabilities: torch.Tensor, 
                                    embedded_predicates: torch.Tensor,
                                    lemmas: Dict[str, torch.LongTensor],
-                                   output_dict: Dict[str, torch.Tensor],
-                                   retrive_generator_loss: bool=False):
+                                   output_dict: Dict[str, torch.Tensor]):
         class_probs, noun_labels, embedded_noun_labels = \
             self._argmax_logits(class_probabilities, used_mask)
-        if self.regularized_labels: # uniqueness and sparsity regularization
+        if self.regularized_labels:
             output_dict["kl_loss"] = self._regularize(length, batch_size, used_mask, class_probs, False)
         else:
             output_dict["kl_loss"] = None
-        if self.regularized_batch and retrive_generator_loss: # diversity regularization
-            output_dict["bp_loss"] = self._regularize_batch(length, batch_size, mask, class_probs, srl_frames[:batch_size, :]) 
-        else:
-            output_dict["bp_loss"] = None 
     
         predicted_labels = torch.cat([srl_frames[:batch_size, :], noun_labels], 0)
         
@@ -380,19 +408,21 @@ class GanSemanticRoleLabeler(Model):
     def _regularize_batch(self, 
                           length: int,
                           batch_size: int,
-                          all_mask: torch.Tensor,
+                          argument_mask: torch.Tensor,
                           noun_class_probs: torch.Tensor, 
                           verb_labels: torch.Tensor):
-        verb_mask = all_mask[:batch_size, :]
-        noun_mask = all_mask[batch_size:, :]
+        verb_mask = argument_mask[:batch_size, :]
+        noun_mask = argument_mask[batch_size:, :]
+        #print(noun_class_probs, noun_class_probs.size())
         
         class_probs = noun_class_probs * noun_mask.unsqueeze(-1).float() 
+        #print(class_probs, class_probs.size())
         batch_probs = torch.sum(class_probs, 1)
         # torch.histc() has been supported on GPU for the latest version of Pytorch   
         verb_labels = verb_labels * verb_mask
         verb_labels_cpu = verb_labels.detach().cpu().float()
-        kl_gold = torch.histc(verb_labels_cpu, bins=self.num_classes, min=0, max=self.num_classes - 1)
-        kl_gold = kl_gold.to(all_mask.device) + 1 # gpu
+        kl_gold = torch.histc(verb_labels_cpu, bins=self.num_classes + 1, min=0, max=self.num_classes + 1)
+        kl_gold = kl_gold.to(noun_class_probs.device) + 1 # gpu
         kl_gold = kl_gold[1:] / torch.sum(kl_gold[1:])
         #print(kl_gold, kl_gold.size())
         """ 
@@ -407,7 +437,9 @@ class GanSemanticRoleLabeler(Model):
         print(kl_gold, kl_gold.size())
         """ 
         kl_pseu = torch.sum(batch_probs, 0) + 1.
-        kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
+        #print(kl_pseu, kl_pseu.size())
+        kl_pseu = kl_pseu / torch.sum(kl_pseu) 
+        #kl_pseu = kl_pseu[1:] / torch.sum(kl_pseu[1:]) 
         #print(kl_pseu, kl_pseu.size())
         
         kl_loss = kl_gold * torch.log(kl_gold / kl_pseu)
@@ -431,11 +463,18 @@ class GanSemanticRoleLabeler(Model):
             torch.log(logits.view(-1, self.num_classes) + self.minimum), 
             tau = self.temperature,
             hard = True).view([batch_size, sequence_length, self.num_classes]) 
-        
+        # FIXME 
+        if not self.suppress_nonarg:
+            embeddings = self.label_embedder.weight
+        else: # discard the embedding of the non-argument label
+            embeddings = self.label_embedder.weight[1:, :]
+
         embedded_labels =self.embedding_dropout(
-            torch.matmul(class_probs, self.label_embedder.weight)) 
+            torch.matmul(class_probs, embeddings)) 
         _, max_likelihood_sequence = torch.max(class_probs, -1)
         for i, length in enumerate(sequence_lengths):
+            # 0 is in fact the 1st argument label when we suppress the non-argument label
+            # FIXME: be careful of this ...
             max_likelihood_sequence[i, length:] = 0
         return class_probs, max_likelihood_sequence, embedded_labels 
 
@@ -493,24 +532,53 @@ class GanSemanticRoleLabeler(Model):
             predictions_list = [all_predictions]
         all_tags = []
         
+        if self.suppress_nonarg:
+            arg_masks = output_dict["arg_masks"]
+            arg_idxes = output_dict["arg_idxes"]
+            
+            arg_masks = [arg_masks[i].detach().cpu().tolist() for i in range(arg_masks.size(0))]
+            arg_idxes = [arg_idxes[i].detach().cpu().tolist() for i in range(arg_idxes.size(0))]
+            
+            constraints = []
+            for isent, masks in enumerate(arg_masks):
+                valid = []
+                for iword, mask in enumerate(masks):
+                    if mask == 1:
+                        valid.append(arg_idxes[isent][iword])    
+                    else:
+                        break
+                constraints.append(valid)
+            #print(constraints)
+        
         #print(self.vocab._token_to_index['srl_tags'])
+        isent = 0
         for predictions, length in zip(predictions_list, sequence_lengths):
             scores, max_likelihood_sequence = torch.max(predictions[:length], 1) 
             max_likelihood_sequence = max_likelihood_sequence.tolist() 
-            
-            #print(max_likelihood_sequence)
+            # FIXME pay attention to this ... 
+            if not self.suppress_nonarg:
+                tags = [self.vocab.get_token_from_index(x, namespace="srl_tags") for x in max_likelihood_sequence]
+            else:
+                tags = []
+                for idx, x in enumerate(max_likelihood_sequence):
+                    ilabel = 0 # non-argument label
+                    if idx in constraints[isent]:
+                        ilabel = x + 1 
+                    tag = self.vocab.get_token_from_index(ilabel, namespace="srl_tags")
+                    tags.append(tag)
+            isent += 1
 
-            tags = [self.vocab.get_token_from_index(x, namespace="srl_tags")
-                    for x in max_likelihood_sequence]
             all_tags.append(tags)
         returned_dict["srl_tags"] = all_tags
-        
+
         # gold srl labels
         gold_srl = []
         srl_frames = output_dict["gold_srl"]
         srl_frames = [srl_frames[i].detach().cpu() for i in range(srl_frames.size(0))]
         for srls in srl_frames:
+            # FIXME pay attention to this ... do not need to touch gold labels
             tags = [self.vocab.get_token_from_index(x, namespace="srl_tags") for x in srls.tolist()]
+
             gold_srl.append(tags)
         returned_dict["gold_srl"] =gold_srl 
         return returned_dict

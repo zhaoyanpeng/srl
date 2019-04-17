@@ -18,7 +18,8 @@
     }
   },
   "reader_mode": "srl_gan",
-  "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
+  //"dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
+  "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder", "label_embedder"],
   
   //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
   //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.verbalized",
@@ -126,7 +127,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 3,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

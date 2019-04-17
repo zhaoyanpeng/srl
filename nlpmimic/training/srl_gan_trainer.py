@@ -303,7 +303,7 @@ class GanSrlTrainer(Trainer):
             if for_training:
                 raise RuntimeError("The model you are trying to optimize does not contain a"
                                    " '*loss' key in the output of model.forward(inputs).")
-            loss = rec_loss = None
+            loss = rec_loss = kl_loss = bp_loss = None
         return loss, rec_loss, kl_loss, bp_loss
     
     def rescale_gradients(self, parameter_names: List[str]) -> Optional[float]:
