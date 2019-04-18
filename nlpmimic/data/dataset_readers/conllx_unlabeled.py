@@ -75,7 +75,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         context_path = cached_path(context_path)
         appendix_path = cached_path(appendix_path)
         cnt: int = 0
-        
+        xxl: int = 0 
         for sentence in self._sentences(context_path, appendix_path, appendix_type): 
             lemmas = sentence.predicted_lemmas
             tokens = [Token(t) for t in sentence.tokens]
@@ -83,8 +83,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             
             head_ids = sentence.head_ids
             dep_rels = sentence.dep_rels
-            #cnt += 1
-            #print('\n{}\n{}\n'.format(cnt, sentence.format()))
+            cnt += 1
+            #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
             if len(tokens) > self.maximum_length:
                 continue
             if self.move_preposition_head:
@@ -95,6 +95,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             #    sys.exit(0)
 
             if not sentence.srl_frames:    
+                #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
                 if not self.allow_null_predicate:
                     continue  
 
@@ -115,10 +116,12 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                     srl_labels = list(set(labels))
                     if not self.allow_null_predicate and \
                         len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
+                        #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
                         continue
                     predicate_indicators = [0 for _ in labels]
                     predicate_indicators[predicate_index] = 1
                     predicate_sense = sentence.predicate_senses[predicate_index]
+                    xxl += 1
                     yield self.text_to_instance(tokens, 
                                                 lemmas, 
                                                 labels,
@@ -129,6 +132,9 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                                                 pos_tags,
                                                 head_ids,
                                                 dep_rels)
+        #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
+        #import sys
+        #sys.exit(0)
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],

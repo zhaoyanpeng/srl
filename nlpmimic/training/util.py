@@ -53,13 +53,19 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         validation_and_test_dataset_reader = DatasetReader.from_params(validation_dataset_reader_params)
     
     if reader_mode == GAN_READER_MODE or reader_mode == NYT_READER_MODE:
-        train_dx_path = params.pop('train_dx_path')
+        train_dx_path = params.pop('train_dx_path', None)
         logger.info("Reading training data of domain x from %s", train_dx_path)
-        train_dx_data = dataset_reader.read(train_dx_path)
+        if train_dx_path is None and reader_mode == NYT_READER_MODE:
+            train_dx_data = [] # empty dx is allowed in this mode 
+        else:
+            train_dx_data = dataset_reader.read(train_dx_path)
 
-        train_dy_path = params.pop('train_dy_path')
+        train_dy_path = params.pop('train_dy_path', None)
         logger.info("Reading training data of domain y from %s", train_dy_path)
-        train_dy_data = dataset_reader.read(train_dy_path)
+        if train_dy_path is None and reader_mode == NYT_READER_MODE:
+            train_dy_data = [] # empty dx is allowed in this mode
+        else:
+            train_dy_data = dataset_reader.read(train_dy_path)
 
         if reader_mode == NYT_READER_MODE:
             train_dy_context_path = params.pop('train_dy_context_path') 

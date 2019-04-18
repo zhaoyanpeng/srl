@@ -17,13 +17,34 @@
         }
     }
   },
-  "reader_mode": "srl_gan",
+  "nytimes_reader": {
+    "type":"conllx_unlabeled",
+    //"maximum_length": 80,
+    //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "AM-EXT", "AM-NEG", "AM-ADV", "A4"],
+    "feature_labels": ["pos", "dep"],
+    "move_preposition_head": false,
+    "instance_type": "srl_graph",
+    "token_indexers": {
+        "elmo": {
+            "type": "elmo_characters"
+        }
+    }
+  },
+  "reader_mode": "srl_nyt",
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
   "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
 
+  "add_unlabeled_noun": false,
+
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only.sel",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
+  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun.sel",
+  
+  "train_dx_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.ctx.part0-2",
+  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.ctx.part0-2",
+
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.sel.part0-2",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.sel.part0-2",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -87,6 +108,7 @@
         }
       ]
     ],
+
     "type": "srl_arg",
     "binary_feature_dim": 100, 
     "temperature": 1,
@@ -115,7 +137,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 0,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

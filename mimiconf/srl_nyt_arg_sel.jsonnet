@@ -31,9 +31,8 @@
     }
   },
   "reader_mode": "srl_nyt",
-  //"dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
-  "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
+  "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
 
   "add_unlabeled_noun": false,
 
@@ -41,11 +40,11 @@
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun.sel",
 
-  "train_dx_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.ctx.part0-3",
-  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.ctx.part0-3",
+  "train_dx_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.ctx.part0-1",
+  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.ctx.part0-1",
 
-  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.sel.part0-3",
-  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.sel.part0-3",
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.sel.part0-1",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.sel.part0-1",
   
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -121,6 +120,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
+    "regularized_batch": true,
     "regularized_labels": null,
     "regularized_nonarg": false,
   },
@@ -138,7 +138,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 0,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -146,6 +146,8 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
+    "bpr_loss_scalar": 2.0,
+    "sort_by_length": true,
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 8,

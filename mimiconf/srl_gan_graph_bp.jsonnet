@@ -98,7 +98,7 @@
     
     "label_loss_type": "unscale_kl",
     "regularized_batch": true,
-    "regularized_labels": ["O"],
+    "regularized_labels": null,
     "regularized_nonarg": false,
   },
   "iterator": {
@@ -115,7 +115,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 0,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

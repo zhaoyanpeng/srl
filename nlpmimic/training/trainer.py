@@ -128,12 +128,12 @@ class TrainerPieces(NamedTuple):
     
     @staticmethod
     def check_data(instances: Iterable[Instance], vocab: Vocabulary = None):
-        max_length = 0
+        max_length, cnt = 0, 0
         for instance in instances:
+            cnt += 1
             this_length = len(instance.fields['tokens'])
             if this_length > max_length:
                 max_length = this_length 
-        print('----maximum length of the instances: {}'.format(max_length))
+        print('----maximum length: {}, total {} instances'.format(max_length, cnt))
         if vocab:
             print(vocab._index_to_token['srl_tags'])
-
