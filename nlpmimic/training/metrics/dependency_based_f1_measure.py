@@ -93,7 +93,8 @@ class DependencyBasedF1Measure(Metric):
                                                                                 mask, prediction_map)
 
         num_classes = predictions.size(-1)
-        if (gold_labels >= num_classes).any():
+        if not self._unlabeled_vals and (gold_labels >= num_classes).any():
+            print(gold_labels)
             raise ConfigurationError("A gold label passed to SpanBasedF1Measure contains an "
                                      "id >= {}, the number of classes.".format(num_classes))
 

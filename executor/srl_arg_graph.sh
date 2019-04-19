@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_graph_c_1.05_arg_flip_0.0r_morph_lp100_tlemma_2222"
+model_name="srl_graph_c_1.05_arg_flip_0.0r_morph_lp100_tlemma_v"
 param_name="srl_arg_graph.jsonnet"
 model_path=$droot/model
 
@@ -27,7 +27,6 @@ elif [ $flag = "recover" ]; then
 elif [ $flag = "tune" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf
-    
     allennlp train $param_path/$param_name -s $this_model --include-package $library
 else
     allennlp train $param_path/$param_name -s $this_model --include-package $library

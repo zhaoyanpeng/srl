@@ -228,7 +228,6 @@ class ArgSemanticRoleLabeler(Model):
                                                         lemmas,
                                                         output_dict)
                 self.srl_encoder(gan_loss_input, full_label_masks, output_dict, retrive_generator_loss, only_reconstruction)
-
             # assumming we can access gold labels for nominal part
             self.add_outputs(batch_size, srl_frames, logits, used_mask, reconstruction_loss, output_dict, metadata)
         else: # not training
@@ -486,16 +485,22 @@ class ArgSemanticRoleLabeler(Model):
                     reconstruction_loss: bool,
                     output_dict: Dict[str, torch.Tensor], 
                     metadata: List[Dict[str, Any]]):
-        if reconstruction_loss:
-            if srl_frames is None:
-                raise ConfigurationError("Prediction loss required but gold labels `srl_frames` is None.")
+        if (reconstruction_loss or not self.ignore_span_metric) and srl_frames is None: 
+            raise ConfigurationError("Prediction loss required but gold labels `srl_frames` is None.")
+
+        if not self.ignore_span_metric:
             gold_labels = srl_frames[pivot:, :] # 0 or batch_size
+            self.span_metric(logits, gold_labels, mask)
+
+        if reconstruction_loss:
+            gold_labels = srl_frames[pivot:, :] # 0 or batch_size
+            if self.suppress_nonarg: 
+                gold_labels = gold_labels - 1 
+                gold_labels[gold_labels < 0] = 0
             rec_loss = sequence_cross_entropy_with_logits(logits,
                                                           gold_labels,
                                                           mask,
                                                           label_smoothing=self._label_smoothing)
-            if not self.ignore_span_metric:
-                self.span_metric(logits, gold_labels, mask)
             output_dict["rec_loss"] = rec_loss
 
         output_dict["gold_srl"] = srl_frames[pivot:] # decoded in `decode` for the purpose of debugging
