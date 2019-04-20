@@ -89,10 +89,17 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                     train_dx_context_path = train_dy_context_path
 
                 allow_null_predicate = nytimes_reader.allow_null_predicate
-                nytimes_reader.allow_null_predicate = True
+
+                using_labeled_noun = params.pop('using_labeled_noun', True) 
+                if using_labeled_noun:
+                    nytimes_reader.allow_null_predicate = False 
+                    appendix_type = 'nyt_learn'
+                else:
+                    nytimes_reader.allow_null_predicate = True 
+                    appendix_type = 'nyt_infer'
                 train_dx_nyt_data = nytimes_reader._read(train_dx_context_path,
                                                          train_dx_appendix_path,
-                                                         appendix_type='nyt_infer')
+                                                         appendix_type=appendix_type)
                 train_dx_nyt_data = ensure_list(train_dx_nyt_data)
                 nytimes_reader.allow_null_predicate = allow_null_predicate
                 train_dx_data += train_dx_nyt_data # combine nytimes with gold
