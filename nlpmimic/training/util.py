@@ -2,7 +2,7 @@
 Helper functions for Trainers
 """
 from typing import Dict, List, Iterable, Optional 
-import logging
+import sys, logging
 
 from allennlp.common.util import ensure_list
 from allennlp.common.checks import ConfigurationError, check_for_data_path, check_for_gpu
@@ -72,15 +72,20 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
             train_dy_appendix_path = params.pop('train_dy_appendix_path')
             logger.info("Reading training (nytimes.context ) data of domain y from %s", train_dy_context_path)
             logger.info("Reading training (nytimes.appendix) data of domain y from %s", train_dy_appendix_path)
+
+            train_dy_firstk = params.pop('train_dy_firstk', sys.maxsize)
+            train_dx_firstk = params.pop('train_dx_firstk', sys.maxsize)
             
             nytimes_reader = DatasetReader.from_params(params.pop('nytimes_reader'))
             train_dy_nyt_data = nytimes_reader._read(train_dy_context_path, 
                                                      train_dy_appendix_path, 
-                                                     appendix_type='nyt_learn')
+                                                     appendix_type='nyt_learn',
+                                                     firstk = train_dy_firstk)
             train_dy_nyt_data = ensure_list(train_dy_nyt_data)
             train_dy_data += train_dy_nyt_data # combine nytimes with gold
             
             add_unlabeled_noun = params.get('add_unlabeled_noun', False) 
+            using_labeled_noun = params.pop('using_labeled_noun', True) 
             if add_unlabeled_noun:
                 train_dx_context_path = params.pop('train_dx_context_path', None)
                 train_dx_appendix_path = params.pop('train_dx_appendix_path')   
@@ -90,7 +95,6 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
 
                 allow_null_predicate = nytimes_reader.allow_null_predicate
 
-                using_labeled_noun = params.pop('using_labeled_noun', True) 
                 if using_labeled_noun:
                     nytimes_reader.allow_null_predicate = False 
                     appendix_type = 'nyt_learn'
@@ -99,7 +103,8 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                     appendix_type = 'nyt_infer'
                 train_dx_nyt_data = nytimes_reader._read(train_dx_context_path,
                                                          train_dx_appendix_path,
-                                                         appendix_type=appendix_type)
+                                                         appendix_type=appendix_type,
+                                                         firstk = train_dx_firstk)
                 train_dx_nyt_data = ensure_list(train_dx_nyt_data)
                 nytimes_reader.allow_null_predicate = allow_null_predicate
                 train_dx_data += train_dx_nyt_data # combine nytimes with gold

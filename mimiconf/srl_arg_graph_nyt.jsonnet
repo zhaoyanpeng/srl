@@ -6,7 +6,7 @@
   },
   "dataset_reader": {
     "type":"conll2009",
-    //"maximum_length": 80,
+    "maximum_length": 100,
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
@@ -19,7 +19,7 @@
   },
   "nytimes_reader": {
     "type":"conllx_unlabeled",
-    //"maximum_length": 80,
+    "maximum_length": 100,
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": false,
@@ -34,24 +34,22 @@
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
   "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
 
-  "add_unlabeled_noun": true,
+  "add_unlabeled_noun": false,
+  "train_dx_firstk": 0,
+  "train_dy_firstk": 10000,
 
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only.sel",
-  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
-  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun.sel",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb.sel",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
   
-  //"train_dx_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.ctx.part000",
-  "train_dx_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.ctx.part001",
-  "train_dy_context_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.ctx.part001",
+  "train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.noun.ctx",
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.noun.sel",
 
-  //"train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.noun.sel.part000",
-  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.sel.part001",
-  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/conll09/nytseller/nytimes.verb.sel.part001",
+  "train_dy_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.verb.ctx",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.verb.sel",
 
-  //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
-  //"datasets_for_vocab_creation": ["vocab"],
+  "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
+  "datasets_for_vocab_creation": ["vocab"],
   "model": {
     "token_embedder": {
       "token_embedders": {
@@ -69,7 +67,7 @@
         "lemmas": {
             "type": "embedding",
             "embedding_dim": 100,
-            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.sells",
+            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
             "vocab_namespace": "lemmas",
             "trainable": false 
         }
@@ -141,7 +139,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 3,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

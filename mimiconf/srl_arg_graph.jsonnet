@@ -21,14 +21,12 @@
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
   "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
 
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.only.sel",
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.only.sel",
-  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.noun.sel",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb.sel",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/devel.noun",
 
-  //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
-  //"datasets_for_vocab_creation": ["vocab"],
+  "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
+  "datasets_for_vocab_creation": ["vocab"],
   "model": {
     "token_embedder": {
       "token_embedders": {
@@ -46,7 +44,7 @@
         "lemmas": {
             "type": "embedding",
             "embedding_dim": 100,
-            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.sells",
+            "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
             "vocab_namespace": "lemmas",
             "trainable": false 
         }
@@ -117,7 +115,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

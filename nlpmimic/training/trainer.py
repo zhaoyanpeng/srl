@@ -116,8 +116,8 @@ class TrainerPieces(NamedTuple):
         for name in tunable_parameter_names:
             logger.info(name)
         
-        #TrainerPieces.check_data(train_dx_data)
-        #TrainerPieces.check_data(train_dy_data, vocab)
+        TrainerPieces.check_data(train_dx_data)
+        TrainerPieces.check_data(train_dy_data, vocab)
         #import sys
         #sys.exit(0)
 

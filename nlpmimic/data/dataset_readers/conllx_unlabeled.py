@@ -2,7 +2,7 @@ from typing import Any, Type, TypeVar, Dict, List, Sequence, Iterable, Optional,
 import itertools 
 import inspect 
 import logging
-import re
+import re, sys
 
 from overrides import overrides
 
@@ -70,12 +70,17 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         self.instance_type = instance_type
 
     @overrides
-    def _read(self, context_path: str, appendix_path: str, appendix_type: str = _DEFAULT_APPENDIX_TYPE) -> Iterable[Instance]:
+    def _read(self, 
+              context_path: str, 
+              appendix_path: str, 
+              appendix_type: str = _DEFAULT_APPENDIX_TYPE, 
+              firstk: int = sys.maxsize) -> Iterable[Instance]:
         # if `file_path` is a URL, redirect to the cache
         context_path = cached_path(context_path)
         appendix_path = cached_path(appendix_path)
         cnt: int = 0
         xxl: int = 0 
+        isample: int = 0
         for sentence in self._sentences(context_path, appendix_path, appendix_type): 
             lemmas = sentence.predicted_lemmas
             tokens = [Token(t) for t in sentence.tokens]
@@ -101,6 +106,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
 
                 labels = [self._EMPTY_LABEL for _ in tokens]
                 predicate_indicators = [0 for _ in tokens]
+                isample += 1
                 yield self.text_to_instance(tokens, 
                                             lemmas,
                                             labels, 
@@ -111,6 +117,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                                             pos_tags,
                                             head_ids,
                                             dep_rels) 
+                if isample >= firstk:
+                    break
             else:
                 for (predicate_index, predicate, labels) in sentence.srl_frames:
                     srl_labels = list(set(labels))
@@ -122,6 +130,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                     predicate_indicators[predicate_index] = 1
                     predicate_sense = sentence.predicate_senses[predicate_index]
                     xxl += 1
+                    isample += 1 
                     yield self.text_to_instance(tokens, 
                                                 lemmas, 
                                                 labels,
@@ -132,6 +141,10 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                                                 pos_tags,
                                                 head_ids,
                                                 dep_rels)
+                    if isample >= firstk:
+                        break
+                if isample >= firstk:
+                    break
         #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
         #import sys
         #sys.exit(0)
