@@ -20,10 +20,12 @@
   "reader_mode": "srl_gan",
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
   "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
-
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/train.verb",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/agree/devel.noun",
+    
+  "validation_ontraining_data": true,
+    
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/devel.noun",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -115,7 +117,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 3,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
