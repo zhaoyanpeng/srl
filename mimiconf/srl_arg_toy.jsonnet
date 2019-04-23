@@ -6,21 +6,19 @@
   },
   "dataset_reader":{
     "type":"conll2009",
+    //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
+    "max_num_argument": 5,
     "instance_type": "srl_graph"
     },
   "reader_mode": "srl_gan",
   "dis_param_name": ["srl_encoder", "predicate_embedder", "label_embedder"],
   
-  //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/separated/noun.morph.picked",
-  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/separated/verb.morph.picked",
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
-  //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/devel.small.noun",
-  //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
-  //"datasets_for_vocab_creation": ["vocab"],
+
   "model": {
     "token_embedder": {
       "token_embedders": {
@@ -116,7 +114,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
-    "regularized_batch": true,
+    "regularized_batch": false,
     "regularized_labels": null,
     "regularized_nonarg": false,
   },

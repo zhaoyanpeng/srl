@@ -10,6 +10,7 @@
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
+    "max_num_argument": 4,
     "instance_type": "srl_graph",
     "token_indexers": {
         "elmo": {
@@ -21,11 +22,11 @@
   //"dis_param_name": ["srl_encoder", "predicate_embedder"],
   "dis_param_name": ["srl_encoder", "predicate_embedder", "lemma_embedder"],
     
-  "validation_ontraining_data": true,
+  "validation_ontraining_data": false,
     
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/train.verb",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/hold/devel.noun",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -117,7 +118,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

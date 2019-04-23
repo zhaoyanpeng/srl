@@ -42,7 +42,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic' # srl_gan
     _DEFAULT_APPENDIX_TYPE = 'nyt_infer' # nyt_learn
-    _MAX_NUM_ARGUMENT = 7 
+    _MAX_NUM_ARGUMENT = 6 
 
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
@@ -52,9 +52,12 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                  valid_srl_labels: Sequence[str] = (),
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
+                 max_num_argument: int = 7,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
                  lazy: bool = False) -> None:
         super().__init__(lazy)
+        self._MAX_NUM_ARGUMENT = max_num_argument
+
         self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer(namespace='tokens')}
         self._lemma_indexers = lemma_indexers or {'lemmas': SingleIdTokenIndexer(namespace='lemmas')} 
         for label in feature_labels:

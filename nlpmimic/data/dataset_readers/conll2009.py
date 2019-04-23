@@ -312,9 +312,12 @@ class Conll2009DatasetReader(DatasetReader):
                  valid_srl_labels: Sequence[str] = (),
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
+                 max_num_argument: int = 7,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
                  lazy: bool = False) -> None:
         super().__init__(lazy)
+        self._MAX_NUM_ARGUMENT = max_num_argument
+
         self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer(namespace='tokens')}
         self._lemma_indexers = lemma_indexers or {'lemmas': SingleIdTokenIndexer(namespace='lemmas')} 
         for label in feature_labels:
