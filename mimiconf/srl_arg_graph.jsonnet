@@ -10,7 +10,7 @@
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
-    "max_num_argument": 4,
+    "max_num_argument": 7,
     "instance_type": "srl_graph",
     "token_indexers": {
         "elmo": {
@@ -101,7 +101,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
-    "regularized_labels": null,
+    "regularized_labels": ['o'],
     "regularized_nonarg": false,
   },
   "iterator": {
@@ -118,7 +118,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 0,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

@@ -252,12 +252,6 @@ class ArgSemanticRoleLabeler(Model):
                                          retrive_generator_loss: bool=False):
         class_probs, noun_labels, _ = \
             self._argmax_logits(class_probabilities, used_mask, argument_indices[batch_size:, :])
-        if self.regularized_labels:
-            output_dict["kl_loss"] = self._regularize(length, batch_size, used_mask, class_probs,
-                regularized_nonarg=self.regularized_nonarg, argument_indices=argument_indices[batch_size:, :])
-        else:
-            output_dict["kl_loss"] = None
-    
         embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
         
         lemma_dim = embedded_lemma_input.size()[-1]
@@ -295,6 +289,13 @@ class ArgSemanticRoleLabeler(Model):
                 noun_edge_onehots, edge_types[:batch_size, :]) 
         else:
             output_dict["bp_loss"] = None 
+        if self.regularized_labels:
+            output_dict["kl_loss"] = self._regularize(length, batch_size, used_mask, class_probs,
+                regularized_nonarg=self.regularized_nonarg, 
+                argument_indices=argument_indices[batch_size:, :],
+                argument_mask=argument_mask[batch_size:])
+        else:
+            output_dict["kl_loss"] = None
 
         graph_input = {'v_embedded_nodes': embedded_verb_nodes,
                        'v_edge_types': verb_edge_types,
@@ -370,7 +371,29 @@ class ArgSemanticRoleLabeler(Model):
                     mask: torch.Tensor,
                     class_probs: torch.Tensor,
                     regularized_nonarg: bool=False,
-                    argument_indices: torch.Tensor=None):
+                    argument_indices: torch.Tensor=None,
+                    argument_mask: torch.Tensor=None):
+        if self.suppress_nonarg:
+            onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
+            noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices)
+            noun_edge_onehots = noun_edge_onehots * argument_mask.unsqueeze(-1).float()
+
+            batch_probs = torch.sum(noun_edge_onehots, 1)
+            batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
+
+            kl_loss = torch.log(batch_probs) * batch_probs
+            
+            if self.label_loss_type == 'reverse_kl':
+                # (k/n) ln ((k/n)/(1/n))
+                divider = 1. / torch.sum(mask, -1).float() 
+                kl_loss = kl_loss * divider.unsqueeze(-1).expand(-1, self.num_classes)
+            elif self.label_loss_type == 'unscale_kl':
+                pass # k ln ((k/n)/(1/n))  
+            else:
+                pass # ...
+            loss = torch.mean(torch.sum(kl_loss, 1)) # loss at sentence level
+            return loss
+
         # if we only want to regularize non-argument labels
         # we need to choose the predicted non-argument labels
         if regularized_nonarg:
