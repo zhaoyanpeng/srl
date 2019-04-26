@@ -1,7 +1,7 @@
 import logging
 import os
 from typing import List, Iterable, NamedTuple
-
+import torch
 from allennlp.common import Params
 from allennlp.common.util import get_frozen_and_tunable_parameter_names
 from allennlp.common.checks import ConfigurationError
@@ -71,7 +71,22 @@ class TrainerPieces(NamedTuple):
         
         model = Model.from_params(vocab=vocab, params=params.pop('model'))
         #print('>>>the null lemma embedding index is {}'.format(model.null_lemma_idx))
-        
+        old_model_path = params.pop('old_model_path', None)
+        update_key_set = dict(params.pop('update_key_set', {}))
+        if old_model_path:
+            new_dict_items = {} 
+            model_dict = model.state_dict()
+
+            old_model_dict = torch.load(old_model_path)
+            for key, v in old_model_dict.items():
+                idx = key.index('.')
+                field = key[:idx]
+                if field in update_key_set:
+                    key = update_key_set[field] + key[idx:] 
+                    new_dict_items[key] = v
+            print('------- load params: {}'.format(new_dict_items.keys()))
+            model_dict.update(new_dict_items)
+            model.load_state_dict(model_dict)
         # Initializing the model can have side effect of expanding the vocabulary
         vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 

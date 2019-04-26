@@ -28,6 +28,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                  residual_connection_layers: Dict[int, List[int]] = {2: [0], 3: [0, 1]},
                  node_msg_dropout: float = 0.3,
                  residual_dropout: float = 0.3,
+                 combined_vectors: bool = True,
                  aggregation_type: str = 'a') -> None:
         super(GanSrlDiscriminator, self).__init__()
         self.signature = 'graph'
@@ -41,6 +42,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._node_msg_dropout = torch.nn.Dropout(node_msg_dropout)
         self._residual_dropout = torch.nn.Dropout(residual_dropout)
         self._aggregation_type = aggregation_type
+        self._combined_vectors = combined_vectors
     
     def set_wgan(self, use_wgan: bool = False):
         self.use_wgan = use_wgan
@@ -67,8 +69,11 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             setattr(self, 'residual_layer_{}'.format(i_layer), current_residual_layer)
             self._residual_layers.append(current_residual_layer)
 
-        self._aggregation_gate = torch.nn.Linear(2 * self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
-        self._aggregation_info = torch.nn.Linear(2 * self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
+        input_size = self._gcn_hidden_dim
+        if self._combined_vectors:
+            input_size = 2 * input_size 
+        self._aggregation_gate = torch.nn.Linear(input_size, self._gcn_hidden_dim, bias=True)
+        self._aggregation_info = torch.nn.Linear(input_size, self._gcn_hidden_dim, bias=True)
         
         self._trans = torch.nn.Linear(self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
         self._logit = torch.nn.Linear(self._gcn_hidden_dim, 1, bias=True)
@@ -169,7 +174,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             logits = self.gcn_aggregation(output, num_nodes, mask)
             labels = mask[:, 0].detach().clone().fill_(0).float()
             labels[batch_size:] += 1.
-            
+
             dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
             output_dict['dis_loss'] = dis_loss / 2 
         return None 
@@ -255,10 +260,11 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                         num_nodes: int,
                         node_mask: torch.Tensor):
         embedded_arguments = embedded_nodes[:, 1:, :]
-        embedded_predicate = embedded_nodes[:, [0], :]
-        embedded_predicate = embedded_predicate.expand(-1, num_nodes - 1, -1) 
+        if self._combined_vectors: # concatenate vectors of predicates and arguments
+            embedded_predicate = embedded_nodes[:, [0], :]
+            embedded_predicate = embedded_predicate.expand(-1, num_nodes - 1, -1) 
+            embedded_arguments = torch.cat([embedded_arguments, embedded_predicate], -1)
 
-        embedded_arguments = torch.cat([embedded_arguments, embedded_predicate], -1)
         gate = torch.sigmoid(self._aggregation_gate(embedded_arguments))
         info = torch.tanh(self._aggregation_info(embedded_arguments))
 
