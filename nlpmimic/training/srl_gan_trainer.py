@@ -825,7 +825,7 @@ class GanSrlTrainer(Trainer):
         sort_by_length = params.pop("sort_by_length", False)
         
         # parameters for wgan
-        clip_val = params.pop("clip_val", 5.0)
+        clip_val = params.pop("clip_val", 0.01)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -861,9 +861,7 @@ class GanSrlTrainer(Trainer):
         for x in parameters:
             logger.info('{} is leaf: {}'.format(x[0], x[1].is_leaf))
         
-        #import sys
-        #sys.exit(0)
-        use_wgan = getattr(model, 'use_wgan', False) 
+        use_wgan = getattr(model.srl_encoder, '_use_wgan', False) 
         if use_wgan:
             optimizer = Optimizer.from_params(parameters, params.pop("optimizer_wgan"))
             params.pop("optimizer", None)

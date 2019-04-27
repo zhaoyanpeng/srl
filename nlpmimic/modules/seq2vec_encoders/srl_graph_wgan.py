@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from allennlp.modules import Seq2VecEncoder
 from allennlp.common.checks import ConfigurationError
 
-@Seq2VecEncoder.register("srl_graph_dis")
+@Seq2VecEncoder.register("srl_graph_wgan")
 class GanSrlDiscriminator(Seq2VecEncoder):
     """
     A discriminator takes as input SRL features and gold labels, and output a loss.
@@ -29,7 +29,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                  node_msg_dropout: float = 0.3,
                  residual_dropout: float = 0.3,
                  combined_vectors: bool = True,
-                 aggregation_type: str = 'a') -> None:
+                 aggregation_type: str = 'a',
+                 use_wgan: bool = True) -> None:
         super(GanSrlDiscriminator, self).__init__()
         self.signature = 'graph'
         # AllenNLP's jsonnet configuration does not support `int` key
@@ -43,10 +44,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._residual_dropout = torch.nn.Dropout(residual_dropout)
         self._aggregation_type = aggregation_type
         self._combined_vectors = combined_vectors
+        self._use_wgan = use_wgan
     
-    def set_wgan(self, use_wgan: bool = False):
-        self.use_wgan = use_wgan
-
     def add_gcn_parameters(self, 
                            num_edge_types: int, 
                            gcn_hidden_dim: int): 
@@ -137,10 +136,12 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                                               num_nodes,
                                               noun_mask)
             
-            logits = self.gcn_aggregation(output_noun, num_nodes, noun_mask)
-            labels = mask[batch_size:, 0].detach().clone().fill_(1).float()
-
-            gen_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
+            logits, probs = self.gcn_aggregation(output_noun, num_nodes, noun_mask)
+            if not self._use_wgan:
+                labels = mask[batch_size:, 0].detach().clone().fill_(1).float()
+                gen_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
+            else:
+                gen_loss = -torch.mean(logits) # minimize -confidence 
             output_dict['gen_loss'] = gen_loss
         else:
             embedded_verb_nodes = input_dict['v_embedded_nodes']
@@ -171,12 +172,16 @@ class GanSrlDiscriminator(Seq2VecEncoder):
 
             output = torch.cat([output_noun, output_verb], 0)
 
-            logits = self.gcn_aggregation(output, num_nodes, mask)
-            labels = mask[:, 0].detach().clone().fill_(0).float()
-            labels[batch_size:] += 1.
+            logits, probs = self.gcn_aggregation(output, num_nodes, mask)
+            if not self._use_wgan:
+                labels = mask[:, 0].detach().clone().fill_(0).float()
+                labels[batch_size:] += 1.
 
-            dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
-            output_dict['dis_loss'] = dis_loss #/ 2 
+                dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
+                dis_loss = dis_loss / 2 # why divided by 2, already averaged.
+            else: # minimize -confidence for the verb domain 
+                dis_loss = torch.mean(logits[:batch_size]) - torch.mean(logits[batch_size:]) 
+            output_dict['dis_loss'] = dis_loss 
         return None 
 
     def multi_layer_gcn_encoder(self, 
@@ -272,8 +277,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         if self._aggregation_type == 'a': 
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = self._node_msg_dropout(torch.sum(wit, 1)) 
-            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
-            probs = probs.squeeze(-1)
+            logit = self._logit(torch.tanh(self._trans(wit))).squeeze(-1)
+            probs = torch.sigmoid(logit)
         elif self._aggregation_type == 'b':
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = torch.tanh(self._trans(wit))
@@ -287,11 +292,11 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             probs = torch.bmm(wit_logits.transpose(1, 2), wit_weight)
             probs = probs.squeeze(-1).squeeze(-1)
             probs.clamp_(max = 1.0) # fix float precision problem
+            logit = None
         elif self._aggregation_type == 'c':
-            edge_average = node_mask.float() / torch.sum(node_mask, -1).unsqueeze(-1).float()
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = self._node_msg_dropout(torch.sum(wit, 1)) 
-            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
-            probs = probs.squeeze(-1)
-        return probs 
+            logit = self._logit(torch.tanh(self._trans(wit))).squeeze(-1)
+            probs = torch.sigmoid(logit)
+        return logit, probs 
 
