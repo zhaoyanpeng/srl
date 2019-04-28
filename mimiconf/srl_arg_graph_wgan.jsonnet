@@ -84,7 +84,8 @@
       "residual_connection_layers": {"2": [0], "3": [0, 1]},
       "node_msg_dropout": 0.3,
       "residual_dropout": 0.3,
-      "aggregation_type": "c",
+      "aggregation_type": "d",
+      "num_layers_dense": 1,
       "combined_vectors": false,
     },
     "initializer": [
@@ -119,11 +120,11 @@
     "type": "srl_gan",
     "num_epochs": 1000,
     "grad_clipping": 1.0,
-    "patience": 150,
+    "patience": 500,
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 2,
+    "cuda_device": 1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -131,9 +132,9 @@
     "dis_loss_scalar": 1.0,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
-    "consecutive_update": false,
-    "dis_max_nbatch": 2,
-    "gen_max_nbatch": 8,
+    "consecutive_update": true,
+    "dis_max_nbatch": 20,
+    "gen_max_nbatch": 1,
     "optimizer": {
       "type": "adadelta",
       "rho": 0.95
@@ -146,11 +147,11 @@
     "clip_val": 0.01,
     "optimizer_wgan": {
       "type": "rmsprop",
-      "lr": 1e-2
+      "lr": 1e-3
     },
     "optimizer_wgan_dis": {
       "type": "rmsprop",
-      "lr": 1e-2
+      "lr": 1e-3
     },
   }
 }

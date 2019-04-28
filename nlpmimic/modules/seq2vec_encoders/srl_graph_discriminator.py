@@ -44,9 +44,6 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._aggregation_type = aggregation_type
         self._combined_vectors = combined_vectors
     
-    def set_wgan(self, use_wgan: bool = False):
-        self.use_wgan = use_wgan
-
     def add_gcn_parameters(self, 
                            num_edge_types: int, 
                            gcn_hidden_dim: int): 
@@ -169,11 +166,11 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                                               num_nodes,
                                               verb_mask)
 
-            output = torch.cat([output_noun, output_verb], 0)
+            output = torch.cat([output_verb, output_noun], 0)
 
             logits = self.gcn_aggregation(output, num_nodes, mask)
             labels = mask[:, 0].detach().clone().fill_(0).float()
-            labels[batch_size:] += 1.
+            labels[:batch_size] += 1.
 
             dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
             output_dict['dis_loss'] = dis_loss #/ 2 

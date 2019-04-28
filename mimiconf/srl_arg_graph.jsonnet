@@ -24,15 +24,15 @@
     
   "validation_ontraining_data": false,
     
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/devel.noun",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
 
-  "old_model_path": "/disk/scratch1/s1847450/model/srl_verb_lyu/best.th",
-  "update_key_set": {"text_field_embedder": "token_embedder", "encoder": "seq_encoder"},
+  //"old_model_path": "/disk/scratch1/s1847450/model/srl_verb_lyu/best.th",
+  //"update_key_set": {"text_field_embedder": "token_embedder", "encoder": "seq_encoder"},
 
   "model": {
     "token_embedder": {
@@ -106,7 +106,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
-    "regularized_labels": ['o'],
+    "regularized_labels": ['O'],
     "regularized_nonarg": false,
   },
   "iterator": {
