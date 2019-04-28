@@ -283,6 +283,7 @@ class ArgSemanticRoleLabeler(Model):
 
         onehot_indices = argument_indices.unsqueeze(-1).expand(-1, -1, self.num_classes)
         noun_edge_onehots = torch.gather(class_probs, 1, onehot_indices[batch_size:, :])
+        noun_edge_softmax = torch.gather(class_probabilities, 1, onehot_indices[batch_size:, :])
         
         if self.regularized_batch and retrive_generator_loss: # diversity regularization
             output_dict["bp_loss"] = self._regularize_batch(length, batch_size, argument_mask, 
@@ -302,7 +303,8 @@ class ArgSemanticRoleLabeler(Model):
                        'v_edge_type_onehots': None, 
                        'n_embedded_nodes': embedded_noun_nodes,
                        'n_edge_types': noun_edge_types,
-                       'n_edge_type_onehots': noun_edge_onehots}
+                       'n_edge_type_onehots': noun_edge_onehots,
+                       'n_edge_type_softmax': noun_edge_softmax}
         return graph_input 
 
     def create_discriminator_input(self,

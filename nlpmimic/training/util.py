@@ -179,6 +179,7 @@ def get_metrics(model: Model,
                 num_batches: int, 
                 kl_loss: float = None,
                 bp_loss: float = None,
+                gp_loss: float = None,
                 generator_loss: float = None,
                 discriminator_loss: float = None,
                 reconstruction_loss: float = None, 
@@ -198,6 +199,9 @@ def get_metrics(model: Model,
     
     if bp_loss is not None:
         metrics["bp_loss"] = bp_loss 
+    
+    if gp_loss is not None:
+        metrics["gp_loss"] = gp_loss 
 
     if generator_loss is not None:
         metrics["g_loss"] = generator_loss

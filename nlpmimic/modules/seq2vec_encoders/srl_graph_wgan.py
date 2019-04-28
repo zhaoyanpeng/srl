@@ -6,6 +6,7 @@ from typing import Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch import autograd
 
 from allennlp.modules import Seq2VecEncoder
 from allennlp.common.checks import ConfigurationError
@@ -31,6 +32,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                  combined_vectors: bool = True,
                  aggregation_type: str = 'a',
                  num_layers_dense: int = 1,
+                 use_gp_penalty: bool = False,
+                 wgan_gp_weight: float = 10.,
                  use_wgan: bool = True) -> None:
         super(GanSrlDiscriminator, self).__init__()
         self.signature = 'graph'
@@ -46,6 +49,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._aggregation_type = aggregation_type
         self._combined_vectors = combined_vectors
         self._num_layers_dense = num_layers_dense
+        self._use_gp_penalty = use_gp_penalty
+        self._wgan_gp_weight = wgan_gp_weight
         self._use_wgan = use_wgan
     
     def add_gcn_parameters(self, 
@@ -188,6 +193,72 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             else: # minimize -confidence for the verb domain 
                 dis_loss = torch.mean(logits[batch_size:] - logits[:batch_size]) 
             output_dict['dis_loss'] = dis_loss 
+            
+            if self._use_gp_penalty:
+                alpha = torch.rand(batch_size, device=mask.device)
+                edge_type_softmax = input_dict['n_edge_type_softmax'].detach()
+
+                alpha = alpha.unsqueeze(-1).unsqueeze(-1)
+                i = torch.arange(batch_size).unsqueeze(-1) # (batch_size, 1)
+                j = torch.arange(num_nodes - 1).unsqueeze(0) # (1, num_nodes - 1)
+                #print(alpha, alpha.size())
+                #print(edge_type_softmax, edge_type_softmax.size())
+
+                edge_type_softmax = edge_type_softmax * (1 - alpha) 
+                #print(verb_edge_types, verb_edge_types.size())
+                #print(edge_type_softmax, edge_type_softmax.size())
+
+                edge_type_softmax[i, j, verb_edge_types] += alpha.squeeze(-1)
+                #print(edge_type_softmax, edge_type_softmax.size())
+                
+                noun_mask = mask[batch_size:]
+                edge_type_softmax *= noun_mask.unsqueeze(-1).float()
+                edge_type_softmax.requires_grad_(True)
+                #print(edge_type_softmax, edge_type_softmax.size())
+                
+                embedded_nodes = embedded_verb_nodes.detach() * alpha + \
+                                 embedded_noun_nodes.detach() * (1 - alpha)
+                embedded_nodes[:, 1:, :] *= noun_mask.unsqueeze(-1).float()
+                embedded_nodes.requires_grad_(True)
+                
+                output_noun = self.multi_layer_gcn_encoder(
+                                                  embedded_nodes,
+                                                  edge_type_softmax,
+                                                  noun_valid_edge_types,
+                                                  noun_edge_types,
+                                                  batch_size,
+                                                  num_nodes,
+                                                  noun_mask)
+                logits, _ = self.gcn_aggregation(output_noun, num_nodes, noun_mask)
+                #pseudo_loss = -torch.mean(logits) # minimize -confidence 
+                gradients, lemma_grads = autograd.grad(outputs=logits,
+                                          inputs=[edge_type_softmax, embedded_nodes],
+                                          #inputs=edge_type_softmax,
+                                          grad_outputs=torch.ones(logits.size(), device=mask.device),
+                                          create_graph=True,
+                                          retain_graph=True,
+                                          only_inputs=True)
+                #print(gradients, gradients.size())
+                #print(noun_mask, noun_mask.size(), noun_mask.dtype)
+                
+                # masked select; argument level; only choose gradients at the argument positions
+                #effective_grads = gradients[noun_mask.byte(), :]
+                #print(effective_grads, effective_grads.size())
+                
+                effective_grads = gradients
+                effective_grads = effective_grads.view(batch_size, -1)
+                # to avoid float underflowing
+                gradients_norm = torch.sqrt(torch.sum(effective_grads ** 2, dim=1) + 1e-12)
+                gradient_penalty = ((gradients_norm - 1) ** 2).mean() 
+                #gradient_penalty = ((effective_grads.norm(2, dim=1) - 1) ** 2).mean() 
+                
+                effective_grads = lemma_grads
+                effective_grads = effective_grads.view(batch_size, -1)
+                gradients_norm = torch.sqrt(torch.sum(effective_grads ** 2, dim=1) + 1e-12)
+                gradient_penalty += ((gradients_norm - 1) ** 2).mean() 
+                #gradient_penalty += ((effective_grads.norm(2, dim=1) - 1) ** 2).mean() 
+
+                output_dict['gp_loss'] = gradient_penalty * self._wgan_gp_weight / 2.
         return None 
 
     def multi_layer_gcn_encoder(self, 
@@ -268,8 +339,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
     
     def gcn_multi_dense(self, embedded_nodes: torch.Tensor):
         for dense_layer in self._trans:
-            embedded_nodes = torch.relu(dense_layer(embedded_nodes))
-            #embedded_nodes = self._node_msg_dropout(embedded_nodes)
+            embedded_nodes = torch.tanh(dense_layer(embedded_nodes))
+            embedded_nodes = self._node_msg_dropout(embedded_nodes)
         return embedded_nodes
 
     def gcn_aggregation(self,

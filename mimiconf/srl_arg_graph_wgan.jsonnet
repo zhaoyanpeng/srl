@@ -28,8 +28,8 @@
   "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
 
-  "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
-  "datasets_for_vocab_creation": ["vocab"],
+  //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
+  //"datasets_for_vocab_creation": ["vocab"],
 
   //"old_model_path": "/disk/scratch1/s1847450/model/srl_verb_lyu/best.th",
   //"update_key_set": {"text_field_embedder": "token_embedder", "encoder": "seq_encoder"},
@@ -87,6 +87,7 @@
       "aggregation_type": "d",
       "num_layers_dense": 1,
       "combined_vectors": false,
+      "use_gp_penalty": true,
     },
     "initializer": [
       [
@@ -107,7 +108,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
-    "regularized_labels": ['O'],
+    "regularized_labels": null,
     "regularized_nonarg": false,
   },
   "iterator": {
@@ -124,7 +125,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": -1,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -133,7 +134,7 @@
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
     "consecutive_update": true,
-    "dis_max_nbatch": 20,
+    "dis_max_nbatch": 18,
     "gen_max_nbatch": 1,
     "optimizer": {
       "type": "adadelta",
