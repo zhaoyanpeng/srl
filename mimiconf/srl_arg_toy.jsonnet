@@ -9,7 +9,7 @@
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
-    "max_num_argument": 5,
+    "max_num_argument": 7,
     "instance_type": "srl_graph"
     },
   "reader_mode": "srl_gan",
@@ -79,6 +79,10 @@
       "node_msg_dropout": 0.3,
       "residual_dropout": 0.3,
       "aggregation_type": "c",
+      "num_layers_dense": 1,
+      "combined_vectors": false,
+      "label_smooth_val": null,
+      "feature_matching": true,
     },
     "initializer": [
       [
@@ -115,13 +119,13 @@
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
     "regularized_batch": false,
-    "regularized_labels": null,
+    "regularized_labels": ['O'],
     "regularized_nonarg": false,
   },
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["tokens", "num_tokens"]],
-    "batch_size": 5 
+    "batch_size": 3 
   },
   "trainer": {
     "type": "srl_gan",
@@ -135,11 +139,11 @@
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
     "gen_pretraining": -1,  
-    "dis_loss_scalar": 0.05,
+    "dis_loss_scalar": 1.0,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
     "bpr_loss_scalar": 1.0,
-    "sort_by_length": true,
+    "sort_by_length": false,
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 4,
@@ -150,6 +154,16 @@
     "optimizer_dis": {
       "type": "adadelta",
       "rho": 0.95
-    }
+    },
+    // wgan
+    "clip_val": 0.01,
+    "optimizer_wgan": {
+      "type": "rmsprop",
+      "lr": 1e-2
+    },
+    "optimizer_wgan_dis": {
+      "type": "rmsprop",
+      "lr": 1e-2
+    },
   }
 }

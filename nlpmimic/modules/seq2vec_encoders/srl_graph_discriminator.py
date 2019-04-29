@@ -29,7 +29,10 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                  node_msg_dropout: float = 0.3,
                  residual_dropout: float = 0.3,
                  combined_vectors: bool = True,
-                 aggregation_type: str = 'a') -> None:
+                 aggregation_type: str = 'a',
+                 num_layers_dense: int = 1,
+                 label_smooth_val: float = None,
+                 feature_matching: bool = False) -> None:
         super(GanSrlDiscriminator, self).__init__()
         self.signature = 'graph'
         # AllenNLP's jsonnet configuration does not support `int` key
@@ -43,6 +46,9 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._residual_dropout = torch.nn.Dropout(residual_dropout)
         self._aggregation_type = aggregation_type
         self._combined_vectors = combined_vectors
+        self._num_layers_dense = num_layers_dense
+        self._label_smooth_val = label_smooth_val
+        self._feature_matching = feature_matching
     
     def add_gcn_parameters(self, 
                            num_edge_types: int, 
@@ -72,7 +78,11 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._aggregation_gate = torch.nn.Linear(input_size, self._gcn_hidden_dim, bias=True)
         self._aggregation_info = torch.nn.Linear(input_size, self._gcn_hidden_dim, bias=True)
         
-        self._trans = torch.nn.Linear(self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
+        self._trans = []
+        for i_layer in range(self._num_layers_dense):
+            dense_layer = torch.nn.Linear(self._gcn_hidden_dim, self._gcn_hidden_dim, bias=True)
+            setattr(self, 'dense_layer_{}'.format(i_layer), dense_layer)
+            self._trans.append(dense_layer)
         self._logit = torch.nn.Linear(self._gcn_hidden_dim, 1, bias=True)
         if self._aggregation_type == 'b':
             self._weight = torch.nn.Linear(self._gcn_hidden_dim, 1, bias=True)
@@ -134,10 +144,10 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                                               num_nodes,
                                               noun_mask)
             
-            logits = self.gcn_aggregation(output_noun, num_nodes, noun_mask)
+            _, probs, _ = self.gcn_aggregation(output_noun, num_nodes, noun_mask)
             labels = mask[batch_size:, 0].detach().clone().fill_(1).float()
 
-            gen_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
+            gen_loss = F.binary_cross_entropy(probs, labels, reduction='mean')
             output_dict['gen_loss'] = gen_loss
         else:
             embedded_verb_nodes = input_dict['v_embedded_nodes']
@@ -168,11 +178,26 @@ class GanSrlDiscriminator(Seq2VecEncoder):
 
             output = torch.cat([output_verb, output_noun], 0)
 
-            logits = self.gcn_aggregation(output, num_nodes, mask)
+            logits, probs, features = self.gcn_aggregation(output, num_nodes, mask)
             labels = mask[:, 0].detach().clone().fill_(0).float()
-            labels[:batch_size] += 1.
+            
+            if self._feature_matching:
+                v_features = features[:batch_size]
+                n_features = features[batch_size:]
+                diff = torch.mean(v_features, 0) - torch.mean(n_features, 0) 
+                gf_loss = torch.sum(diff ** 2)
+                output_dict['gen_loss'] = gf_loss
+            
+            if self._label_smooth_val is None:
+                labels[:batch_size] += 1.0 
+                dis_loss = F.binary_cross_entropy(probs, labels, reduction='mean')
+            else:
+                noise = self._label_smooth_val
+                if self._label_smooth_val <= 0.5:
+                    noise = torch.empty(batch_size, device=labels.device).uniform_(0.7, 1.2) 
+                labels[:batch_size] += noise 
+                dis_loss = F.binary_cross_entropy_with_logits(logits, labels, reduction='mean')
 
-            dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
             output_dict['dis_loss'] = dis_loss #/ 2 
         return None 
 
@@ -252,6 +277,12 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             output = embedded_nodes_per_layer[1:]
         return output
 
+    def gcn_multi_dense(self, embedded_nodes: torch.Tensor):
+        for dense_layer in self._trans:
+            embedded_nodes = torch.tanh(dense_layer(embedded_nodes))
+            embedded_nodes = self._node_msg_dropout(embedded_nodes)
+        return embedded_nodes
+
     def gcn_aggregation(self,
                         embedded_nodes: torch.Tensor,
                         num_nodes: int,
@@ -264,13 +295,13 @@ class GanSrlDiscriminator(Seq2VecEncoder):
 
         gate = torch.sigmoid(self._aggregation_gate(embedded_arguments))
         info = torch.tanh(self._aggregation_info(embedded_arguments))
-
+        
         # wit is an abstract representation of the graph
         if self._aggregation_type == 'a': 
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = self._node_msg_dropout(torch.sum(wit, 1)) 
-            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
-            probs = probs.squeeze(-1)
+            logit = self._logit(torch.tanh(self._trans(wit))).squeeze(-1)
+            probs = torch.sigmoid(logit)
         elif self._aggregation_type == 'b':
             wit = gate * info * node_mask.unsqueeze(-1).float()
             wit = torch.tanh(self._trans(wit))
@@ -284,11 +315,15 @@ class GanSrlDiscriminator(Seq2VecEncoder):
             probs = torch.bmm(wit_logits.transpose(1, 2), wit_weight)
             probs = probs.squeeze(-1).squeeze(-1)
             probs.clamp_(max = 1.0) # fix float precision problem
+            logit = None
         elif self._aggregation_type == 'c':
-            edge_average = node_mask.float() / torch.sum(node_mask, -1).unsqueeze(-1).float()
             wit = gate * info * node_mask.unsqueeze(-1).float()
-            wit = self._node_msg_dropout(torch.sum(wit, 1)) 
-            probs = torch.sigmoid(self._logit(torch.tanh(self._trans(wit))))
-            probs = probs.squeeze(-1)
-        return probs 
+            wit = self._node_msg_dropout(torch.tanh(torch.sum(wit, 1))) 
 
+            wit = self.gcn_multi_dense(wit)
+
+            logit = self._logit(wit).squeeze(-1)
+            probs = torch.sigmoid(logit)
+        else:
+            logit = probs = wit = None
+        return logit, probs, wit

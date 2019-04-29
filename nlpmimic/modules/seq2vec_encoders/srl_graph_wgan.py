@@ -32,8 +32,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                  combined_vectors: bool = True,
                  aggregation_type: str = 'a',
                  num_layers_dense: int = 1,
-                 use_gp_penalty: bool = False,
-                 wgan_gp_weight: float = 10.,
+                 wgan_gp_weight: float = None,
                  use_wgan: bool = True) -> None:
         super(GanSrlDiscriminator, self).__init__()
         self.signature = 'graph'
@@ -49,7 +48,6 @@ class GanSrlDiscriminator(Seq2VecEncoder):
         self._aggregation_type = aggregation_type
         self._combined_vectors = combined_vectors
         self._num_layers_dense = num_layers_dense
-        self._use_gp_penalty = use_gp_penalty
         self._wgan_gp_weight = wgan_gp_weight
         self._use_wgan = use_wgan
     
@@ -194,7 +192,7 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                 dis_loss = torch.mean(logits[batch_size:] - logits[:batch_size]) 
             output_dict['dis_loss'] = dis_loss 
             
-            if self._use_gp_penalty:
+            if self._wgan_gp_weight is not None:
                 alpha = torch.rand(batch_size, device=mask.device)
                 edge_type_softmax = input_dict['n_edge_type_softmax'].detach()
 

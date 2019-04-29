@@ -90,6 +90,7 @@ class GanSrlTrainer(Trainer):
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
                  bpr_loss_scalar: float = 1.,
+                 feature_matching: bool = False,
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
                  sort_by_length: bool = False,
@@ -143,6 +144,7 @@ class GanSrlTrainer(Trainer):
         self.kld_loss_scalar = kld_loss_scalar
         self.bpr_loss_scalar = bpr_loss_scalar
         # wgan
+        self.feature_matching = feature_matching
         self.use_wgan = use_wgan 
         self.clip_val = clip_val
 
@@ -254,6 +256,7 @@ class GanSrlTrainer(Trainer):
                    retrive_generator_loss: bool,
                    reconstruction_loss: bool = True,
                    only_reconstruction: bool = False,
+                   i_wanna_generator_loss: bool = False,
                    peep_prediction: bool = False) -> torch.Tensor:
         """
         Does a forward pass on the given batch and returns the ``loss`` value in the result.
@@ -270,7 +273,7 @@ class GanSrlTrainer(Trainer):
                                      only_reconstruction=only_reconstruction)
         try:
             if for_training: # compulsory loss
-                if retrive_generator_loss:
+                if retrive_generator_loss or i_wanna_generator_loss:
                     loss = output_dict["gen_loss"] # loss of the generator
                 else:
                     loss = output_dict["dis_loss"] # loss of the discriminator
@@ -422,12 +425,20 @@ class GanSrlTrainer(Trainer):
 
                 # update generator
                 self.optimizer.zero_grad()
-                gen_loss, rec_loss, kl_loss, bp_loss, _ = self.batch_loss(batch, 
-                                          for_training=True, 
-                                          retrive_generator_loss=True,
-                                          reconstruction_loss=self.rec_in_training,
-                                          only_reconstruction=False,
-                                          peep_prediction=peep)
+                if self.feature_matching: 
+                    gen_loss, rec_loss, kl_loss, bp_loss, _ = self.batch_loss(batch, 
+                                            for_training=True, 
+                                            retrive_generator_loss=False,
+                                            reconstruction_loss=self.rec_in_training,
+                                            i_wanna_generator_loss=True,
+                                            peep_prediction=peep)
+                else:
+                    gen_loss, rec_loss, kl_loss, bp_loss, _ = self.batch_loss(batch, 
+                                            for_training=True, 
+                                            retrive_generator_loss=True,
+                                            reconstruction_loss=self.rec_in_training,
+                                            only_reconstruction=False,
+                                            peep_prediction=peep)
                 if torch.isnan(gen_loss):
                     raise ValueError("nan loss encountered")
                 if self.rec_in_training and torch.isnan(rec_loss):
@@ -872,6 +883,7 @@ class GanSrlTrainer(Trainer):
         for x in parameters:
             logger.info('{} is leaf: {}'.format(x[0], x[1].is_leaf))
         
+        feature_matching = getattr(model.srl_encoder, '_feature_matching', False)
         use_wgan = getattr(model.srl_encoder, '_use_wgan', False) 
         if use_wgan:
             optimizer = Optimizer.from_params(parameters, params.pop("optimizer_wgan"))
@@ -924,6 +936,7 @@ class GanSrlTrainer(Trainer):
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
                    bpr_loss_scalar = bpr_loss_scalar,
+                   feature_matching = feature_matching,
                    use_wgan = use_wgan,
                    clip_val = clip_val,
                    sort_by_length = sort_by_length,

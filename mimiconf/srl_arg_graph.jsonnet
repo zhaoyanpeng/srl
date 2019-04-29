@@ -24,9 +24,9 @@
     
   "validation_ontraining_data": false,
     
-  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/train.verb",
-  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/3.1/devel.noun",
+  "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
+  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
+  "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -86,6 +86,8 @@
       "residual_dropout": 0.3,
       "aggregation_type": "c",
       "combined_vectors": false,
+      "label_smooth_val": null,
+      "feature_matching": true,
     },
     "initializer": [
       [
@@ -123,7 +125,7 @@
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 1,
+    "cuda_device": 2,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,

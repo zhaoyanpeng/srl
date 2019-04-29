@@ -245,7 +245,7 @@ class GraphSemanticRoleLabeler(Model):
                 regularized_nonarg=self.regularized_nonarg, argument_indices=argument_indices[batch_size:, :])
         else:
             output_dict["kl_loss"] = None
-        if self.regularized_batch and retrive_generator_loss: # diversity regularization
+        if self.regularized_batch: # diversity regularization
             output_dict["bp_loss"] = self._regularize_batch(length, batch_size, mask, class_probs, srl_frames[:batch_size, :]) 
         else:
             output_dict["bp_loss"] = None 
