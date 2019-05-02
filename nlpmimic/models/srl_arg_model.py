@@ -39,6 +39,7 @@ class ArgSemanticRoleLabeler(Model):
                  regularized_batch: bool = False,
                  regularized_labels: List[str] = None,
                  regularized_nonarg: bool = False,
+                 seq_projection_dim: int = None, 
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None,
                  label_smoothing: float = None,
@@ -100,6 +101,12 @@ class ArgSemanticRoleLabeler(Model):
             self.label_selector = torch.nn.Parameter(label_selector, requires_grad=False)
             """
             pass
+        self.seq_projection_layer = None
+        seq_vector_dim = seq_projection_dim
+        if seq_projection_dim is not None:
+            self.seq_projection_layer = Linear(self.seq_encoder.get_output_dim(), seq_projection_dim)
+        else:
+            seq_vector_dim = 0 
 
         self.use_graph_srl_encoder = self.srl_encoder.signature == 'graph' 
         if self.use_graph_srl_encoder:
@@ -107,7 +114,7 @@ class ArgSemanticRoleLabeler(Model):
                 raise ConfigurationError("Embedding dimensions of lemmas and predicates are not equal")
             srl_encoder.add_gcn_parameters(
                 self.num_classes, # FIXME: be careful when discarding the non-argument label 
-                lemma_embedder.get_output_dim()) 
+                seq_vector_dim + lemma_embedder.get_output_dim()) 
         # For the span based evaluation, we don't want to consider labels
         # for verb, because the verb index is provided to the model.
         # FIXME: has been rewritten for discarding the non-argument label
@@ -121,6 +128,7 @@ class ArgSemanticRoleLabeler(Model):
         self.binary_feature_embedding = Embedding(2, binary_feature_dim)
         self.tag_projection_layer = TimeDistributed(Linear(self.seq_encoder.get_output_dim(),
                                                            self.num_classes))
+
         self.embedding_dropout = Dropout(p=embedding_dropout)
         self._label_smoothing = label_smoothing
         self.ignore_span_metric = ignore_span_metric
@@ -180,15 +188,30 @@ class ArgSemanticRoleLabeler(Model):
             used_mask = mask
             used_pi = predicate_indicators
 
-        # Predict srl labels using the srler that needs to be trained.
-        # Concatenate the verb feature onto the embedded text. This now
-        # has shape (batch_size, sequence_length, embedding_dim + binary_feature_dim).
-        embedded_pi = self.binary_feature_embedding(used_pi.long())
-        
-        embedded_token_with_pi = torch.cat([embedded_tokens, embedded_pi], -1)
-        _, sequence_length, _ = embedded_token_with_pi.size()
 
-        encoded_token = self.seq_encoder(embedded_token_with_pi, used_mask)
+        if self.seq_projection_layer is not None:
+            this_mask = mask               # all mask
+            this_pi = predicate_indicators # all indicators
+            this_embedded_tokens = embedded_token_input
+            this_embedded_pi = self.binary_feature_embedding(this_pi.long())
+
+            embedded_token_with_pi = torch.cat([this_embedded_tokens, this_embedded_pi], -1)
+            _, sequence_length, _ = embedded_token_with_pi.size()
+            encoded_token, embedded_sent = self.seq_encoder(embedded_token_with_pi, this_mask)
+            embedded_sent = self.seq_projection_layer(embedded_sent)
+            if self.training:
+                encoded_token = encoded_token[batch_size:]
+        else:
+            embedded_sent = None
+            # Predict srl labels using the srler that needs to be trained.
+            # Concatenate the verb feature onto the embedded text. This now
+            # has shape (batch_size, sequence_length, embedding_dim + binary_feature_dim).
+            embedded_pi = self.binary_feature_embedding(used_pi.long())
+            
+            embedded_token_with_pi = torch.cat([embedded_tokens, embedded_pi], -1)
+            _, sequence_length, _ = embedded_token_with_pi.size()
+            encoded_token = self.seq_encoder(embedded_token_with_pi, used_mask)
+            
 
         logits = self.tag_projection_layer(encoded_token)
         reshaped_log_probs = logits.view(-1, self.num_classes)
@@ -214,7 +237,8 @@ class ArgSemanticRoleLabeler(Model):
                                                         embedded_predicates,
                                                         lemmas,
                                                         output_dict,
-                                                        retrive_generator_loss)
+                                                        retrive_generator_loss,
+                                                        embedded_sent)
                 self.srl_encoder(gan_loss_input, argument_mask, output_dict, retrive_generator_loss, only_reconstruction)
             else:
                 gan_loss_input, full_label_masks = self.create_discriminator_input(
@@ -249,7 +273,8 @@ class ArgSemanticRoleLabeler(Model):
                                          embedded_predicates: torch.Tensor,
                                          lemmas: Dict[str, torch.LongTensor],
                                          output_dict: Dict[str, torch.Tensor],
-                                         retrive_generator_loss: bool=False):
+                                         retrive_generator_loss: bool=False,
+                                         embedded_sent: torch.Tensor = None):
         class_probs, noun_labels, _ = \
             self._argmax_logits(class_probabilities, used_mask, argument_indices[batch_size:, :])
         embedded_lemma_input = self.embedding_dropout(self.lemma_embedder(lemmas))
@@ -260,7 +285,12 @@ class ArgSemanticRoleLabeler(Model):
         embedded_nodes = torch.gather(embedded_lemma_input, 1, indices)
         embedded_preds = embedded_predicates.transpose(1, 2)
         embedded_nodes = torch.cat([embedded_preds, embedded_nodes], 1)
-        
+
+        if embedded_sent is not None:
+            narg = argument_mask.size(1)
+            embedded_sents = embedded_sent.unsqueeze(1).expand(-1, narg + 1, -1)
+            embedded_nodes = torch.cat([embedded_nodes, embedded_sents], -1)
+
         embedded_verb_nodes = embedded_nodes[:batch_size, :]
         embedded_noun_nodes = embedded_nodes[batch_size:, :]
         

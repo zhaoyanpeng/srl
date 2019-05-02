@@ -150,7 +150,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                 labels = mask[batch_size:, 0].detach().clone().fill_(1).float()
                 gen_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
             else:
-                gen_loss = -torch.mean(logits) # minimize -confidence 
+                gen_loss = torch.mean(logits) # minimize -confidence 
+                #gen_loss = -torch.mean(logits) # minimize -confidence 
             output_dict['gen_loss'] = gen_loss
         else:
             embedded_verb_nodes = input_dict['v_embedded_nodes']
@@ -189,7 +190,8 @@ class GanSrlDiscriminator(Seq2VecEncoder):
                 dis_loss = F.binary_cross_entropy(logits, labels, reduction='mean')
                 dis_loss = dis_loss # why divided by 2, already averaged.
             else: # minimize -confidence for the verb domain 
-                dis_loss = torch.mean(logits[batch_size:] - logits[:batch_size]) 
+                dis_loss = torch.mean(-logits[batch_size:] + logits[:batch_size]) 
+                #dis_loss = torch.mean(logits[batch_size:] - logits[:batch_size]) 
             output_dict['dis_loss'] = dis_loss 
             
             if self._wgan_gp_weight is not None:

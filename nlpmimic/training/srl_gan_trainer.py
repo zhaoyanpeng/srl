@@ -473,6 +473,10 @@ class GanSrlTrainer(Trainer):
                 kl_loss = None
                 bp_loss = None
                 gen_batch_grad_norm = None
+
+                if not optimize_dis: # anyway, we must optimize something with this batch
+                    optimnize_dis = True
+
             #logger.info('')
             #print('----------------------1. model.temperature is {}'.format(self.model.temperature.item()))
            
@@ -653,7 +657,11 @@ class GanSrlTrainer(Trainer):
                 boost_signal = self.load_model() 
                 epoch_counter = 0
             if not boost_signal: 
+                patience = self._metric_tracker._patience
                 epoch_counter = self._restore_checkpoint()
+                logger.info('Patience {} -- {}'.format(patience, self._metric_tracker._patience))
+                if self._metric_tracker._patience < patience:
+                    self._metric_tracker._patience = patience 
         except RuntimeError:
             traceback.print_exc()
             raise ConfigurationError("Could not recover training from the checkpoint.  Did you mean to output to "
