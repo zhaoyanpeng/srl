@@ -10,6 +10,7 @@
     //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
     "feature_labels": ["pos", "dep"],
     "move_preposition_head": true,
+    "max_num_argument": 7,
     "instance_type": "srl_graph",
     "token_indexers": {
         "elmo": {
@@ -36,17 +37,17 @@
 
   "add_unlabeled_noun": false,
   "train_dx_firstk": 0,
-  "train_dy_firstk": 10000,
+  "train_dy_firstk": 20000,
 
   "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
-  "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
+  //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
   "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
   
-  "train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.noun.ctx",
-  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.noun.sel",
+  "train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/5.0/nytimes.noun.ctx",
+  "train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/5.0/nytimes.noun.sel",
 
-  "train_dy_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.verb.ctx",
-  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/pay/nytimes.verb.sel",
+  "train_dy_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/5.0/nytimes.verb.ctx",
+  "train_dy_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/5.0/nytimes.verb.sel",
 
   "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
   "datasets_for_vocab_creation": ["vocab"],
@@ -101,6 +102,9 @@
       "node_msg_dropout": 0.3,
       "residual_dropout": 0.3,
       "aggregation_type": "c",
+      "combined_vectors": false,
+      "label_smooth_val": null,
+      "feature_matching": false,
     },
     "initializer": [
       [
@@ -122,7 +126,7 @@
     
     "label_loss_type": "unscale_kl",
     "suppress_nonarg": true,
-    "regularized_labels": null,
+    "regularized_labels": ['O'],
     "regularized_nonarg": false,
   },
   "iterator": {
@@ -135,11 +139,11 @@
     "type": "srl_gan",
     "num_epochs": 1000,
     "grad_clipping": 1.0,
-    "patience": 150,
+    "patience": 500,
     "shuffle": true,
     "num_serialized_models_to_keep": 5,
     "validation_metric": "+f1-measure-overall",
-    "cuda_device": 3,
+    "cuda_device": 0,
     "dis_min_loss": 0.0,
     "dis_skip_nepoch": 0,
     "gen_skip_nepoch": 0,
@@ -147,6 +151,8 @@
     "dis_loss_scalar": 0.05,
     "gen_loss_scalar": 1.0,
     "kld_loss_scalar": 0.5,
+    "kld_update_rate": 0.05,
+    "kld_update_unit": 30,
     "consecutive_update": false,
     "dis_max_nbatch": 2,
     "gen_max_nbatch": 8,

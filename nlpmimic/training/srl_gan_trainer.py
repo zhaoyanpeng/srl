@@ -90,6 +90,8 @@ class GanSrlTrainer(Trainer):
                  gen_loss_scalar: float = 1.,
                  kld_loss_scalar: float = 1.,
                  bpr_loss_scalar: float = 1.,
+                 kld_update_rate: float = None,
+                 kld_update_unit: int = None,
                  feature_matching: bool = False,
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
@@ -143,6 +145,8 @@ class GanSrlTrainer(Trainer):
         self.dis_loss_scalar = dis_loss_scalar
         self.kld_loss_scalar = kld_loss_scalar
         self.bpr_loss_scalar = bpr_loss_scalar
+        self.kld_update_rate = kld_update_rate
+        self.kld_update_unit = kld_update_unit
         # wgan
         self.feature_matching = feature_matching
         self.use_wgan = use_wgan 
@@ -396,6 +400,11 @@ class GanSrlTrainer(Trainer):
         bsize, cnt = 15, 0
         gen_nbatch, dis_nbatch = 0, 0
         optimize_gen, optimize_dis = True, True
+
+        if self.kld_update_rate is not None and self.kld_update_unit is not None and \
+            epoch != 0 and epoch % self.kld_update_unit == 0 and self.kld_loss_scalar < 1:
+            self.kld_loss_scalar += self.kld_update_rate 
+            print('\n----------------------epoch {}: self.kld_loss_scalar is {}'.format(epoch, self.kld_loss_scalar))
 
         cumulative_batch_size = 0
         for batch in train_generator_tqdm:
@@ -845,6 +854,8 @@ class GanSrlTrainer(Trainer):
         gen_loss_scalar = params.pop("gen_loss_scalar", 1.)
         kld_loss_scalar = params.pop("kld_loss_scalar", 1.)
         bpr_loss_scalar = params.pop("bpr_loss_scalar", 1.)
+        kld_update_rate = params.pop("kld_update_rate", None)
+        kld_update_unit = params.pop("kld_update_unit", None)
         dis_min_loss = params.pop("dis_min_loss", -1.)
 
         consecutive_update = params.pop("consecutive_update", False)
@@ -944,6 +955,8 @@ class GanSrlTrainer(Trainer):
                    gen_loss_scalar = gen_loss_scalar,
                    kld_loss_scalar = kld_loss_scalar,
                    bpr_loss_scalar = bpr_loss_scalar,
+                   kld_update_rate = kld_update_rate,
+                   kld_update_unit = kld_update_unit,
                    feature_matching = feature_matching,
                    use_wgan = use_wgan,
                    clip_val = clip_val,

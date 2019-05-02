@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_graph_c_1.05_arg_flip_0.0r_morph_lp100_tlemma_nyt.10k.pay_5.0"
+model_name="srl_graph_c_1.05_arg_flip_0.0r_morph_lp100_tlemma_nyt.20k_5.0_kl.5.30.05_nop_bug_fixed"
 param_name="srl_arg_graph_nyt.jsonnet"
 model_path=$droot/model
 
