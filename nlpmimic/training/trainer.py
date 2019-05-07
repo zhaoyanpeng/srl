@@ -104,7 +104,7 @@ class TrainerPieces(NamedTuple):
             train_dx_data = all_datasets['train_dx']
             train_dy_data = all_datasets['train_dy']
             train_data = None
-            discriminator_param_name = params.pop('dis_param_name')
+            discriminator_param_name = params.pop('dis_param_name', [])
         else:
             train_data = all_datasets['train']
             train_dx_data = train_dy_data = None

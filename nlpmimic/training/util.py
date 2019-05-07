@@ -180,6 +180,10 @@ def get_metrics(model: Model,
                 kl_loss: float = None,
                 bp_loss: float = None,
                 gp_loss: float = None,
+                L: float = None,
+                L_u: float = None,
+                H: float = None,
+                C: float = None,
                 generator_loss: float = None,
                 discriminator_loss: float = None,
                 reconstruction_loss: float = None, 
@@ -208,4 +212,17 @@ def get_metrics(model: Model,
     
     if discriminator_loss is not None:
         metrics["d_loss"] = discriminator_loss 
+    
+    if L is not None:
+        metrics['L'] = L
+    
+    if L_u is not None:
+        metrics['L_u'] = L_u
+        
+    if H is not None:
+        metrics['H'] = H
+        
+    if C is not None:
+        metrics['C'] = C 
+
     return metrics
