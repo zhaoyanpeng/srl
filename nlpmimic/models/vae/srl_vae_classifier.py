@@ -32,6 +32,8 @@ class SrlVaeClassifier(Model):
                  predt_embedder: Embedding, # predt: predicate
                  seq_encoder: Seq2SeqEncoder,
                  psign_dim: int, # psign: predicate sign bit (0/1) 
+                 tau: float = None,
+                 tunable_tau: bool = False,
                  suppress_nonarg: bool = False,
                  seq_projection_dim: int = None, 
                  embedding_dropout: float = 0.,
@@ -48,6 +50,11 @@ class SrlVaeClassifier(Model):
         self.predt_embedder = predt_embedder
         self.psign_embedder = Embedding(2, psign_dim)
         self.embedding_dropout = Dropout(p=embedding_dropout)
+
+        self.tau = None
+        self.minimum_tau = 1e-5 
+        if tau is not None:
+            self.tau = torch.nn.Parameter(torch.tensor(tau), requires_grad=tunable_tau) 
         
         # feature space to label space
         self.suppress_nonarg = suppress_nonarg
@@ -112,15 +119,15 @@ class SrlVaeClassifier(Model):
     
     def gumbel_relax(self, 
                      mask: torch.Tensor,
-                     logits: torch.Tensor,
-                     tau: torch.Tensor = torch.tensor(1.)):
+                     logits: torch.Tensor):
         seq_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
         if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
         batch_size, seq_length, _ = logits.size()
 
+        self.tau.data.clamp_(min = self.minimum_tau)
         gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
-            F.log_softmax(logits.view(-1, self.nclass), dim=-1), tau=tau)
+            F.log_softmax(logits.view(-1, self.nclass), dim=-1), tau=self.tau)
             
         gumbel_hard = gumbel_hard.view([batch_size, seq_length, self.nclass]) 
         gumbel_soft = gumbel_soft.view([batch_size, seq_length, self.nclass]) 

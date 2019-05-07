@@ -24,27 +24,21 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
-                 tau: float = 1.,
-                 tunable_tau: bool = False,
                  straight_through: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(VaeSemanticRoleLabeler, self).__init__(vocab, regularizer)
         self.minimum_float = 1e-25
 
-        self.autoencoder = autoencoder
         self.classifier = classifier
-        self.nsampling = nsampling
+        self.autoencoder = autoencoder
 
         self.alpha = alpha
-
+        self.nsampling = nsampling
+        self.straight_through = straight_through
         self.autoencoder.add_parameters(self.classifier.nclass,
                                         self.vocab.get_vocab_size("lemmas"))
-        
-        self.minimum_tau = 1e-5 
-        self.tau = torch.nn.Parameter(torch.tensor(tau), requires_grad=tunable_tau) 
-        self.straight_through = straight_through
-
+        self.tau = self.classifier.tau
         initializer(self)
     
     def forward(self,  # type: ignore
@@ -109,13 +103,12 @@ class VaeSemanticRoleLabeler(Model):
         L = -L
         ### unlabled halve
 
-        self.tau.data.clamp_(min = self.minimum_tau)
         arg_mask = argument_mask[batch_size:]
         y_logs, y_ls = [], []
         for _ in range(self.nsampling):
             # gumbel relaxation for unlabeled halve
             gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
-                self.classifier.gumbel_relax(arg_mask, arg_logits[batch_size:], tau=self.tau)
+                self.classifier.gumbel_relax(arg_mask, arg_logits[batch_size:])
             # used in decoding
             labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
             encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  

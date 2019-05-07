@@ -8,7 +8,7 @@ droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
 model_name="srl_naive_c_1.05_vae_tlemma_sell_hard_alpha.02"
-model_name="srl_tune"
+#model_name="srl_tune"
 param_name="srl_vae_naive.jsonnet"
 model_path=$droot/model
 

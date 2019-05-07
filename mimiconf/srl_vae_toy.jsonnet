@@ -85,6 +85,8 @@
                 "recurrent_dropout_probability": 0.0,
                 "use_highway": true
             },
+            "tau": 0.01,
+            "tunable_tau": false,
             "psign_dim": 2,
             "seq_projection_dim": null,
             "embedding_dropout": 0.0,
@@ -94,8 +96,6 @@
         "type": "srl_vae",
         "alpha": 0.5,
         "nsampling": 2,
-        "tau": 0.01,
-        "tunable_tau": false,
         "straight_through": true,
 
     },
