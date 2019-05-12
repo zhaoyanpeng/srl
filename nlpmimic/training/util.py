@@ -1,14 +1,18 @@
 """
 Helper functions for Trainers
 """
-from typing import Dict, List, Iterable, Optional 
-import sys, logging
+from typing import cast, Dict, Optional, List, Tuple, Union, Iterable, Iterator, Any, NamedTuple
+import sys, logging, random
 
-from allennlp.common.util import ensure_list
+from allennlp.common.util import ensure_list, add_noise_to_dict_values, lazy_groups_of
 from allennlp.common.checks import ConfigurationError, check_for_data_path, check_for_gpu
 from allennlp.common.params import Params
 from allennlp.training.util import sparse_clip_norm
+from allennlp.data.dataset import Batch
+from allennlp.data.instance import Instance
+from allennlp.data.iterators.data_iterator import DataIterator, TensorDict
 from allennlp.data.dataset_readers import DatasetReader
+from allennlp.data.vocabulary import Vocabulary
 from allennlp.data import Instance
 from allennlp.models.model import Model
 
@@ -148,6 +152,96 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         datasets["vocab"] = vocab_data
     return datasets
 
+def sort_by_padding(instances: List[Instance],
+                    sorting_keys: List[Tuple[str, str]],  # pylint: disable=invalid-sequence-index
+                    vocab: Vocabulary,
+                    padding_noise: float = 0.0,
+                    reverse: bool = False) -> List[Instance]:
+    """
+    Sorts the instances by their padding lengths, using the keys in
+    ``sorting_keys`` (in the order in which they are provided).  ``sorting_keys`` is a list of
+    ``(field_name, padding_key)`` tuples.
+    """
+    instances_with_lengths = []
+    for instance in instances:
+        # Make sure instance is indexed before calling .get_padding
+        instance.index_fields(vocab)
+        padding_lengths = cast(Dict[str, Dict[str, float]], instance.get_padding_lengths())
+        if padding_noise > 0.0:
+            noisy_lengths = {}
+            for field_name, field_lengths in padding_lengths.items():
+                noisy_lengths[field_name] = add_noise_to_dict_values(field_lengths, padding_noise)
+            padding_lengths = noisy_lengths
+        instance_with_lengths = ([padding_lengths[field_name][padding_key]
+                                  for (field_name, padding_key) in sorting_keys],
+                                 instance)
+        instances_with_lengths.append(instance_with_lengths)
+    instances_with_lengths.sort(key=lambda x: x[0], reverse=reverse)
+    return [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
+
+class DataSampler(object):
+    
+    def __init__(self, instances: Iterable[Instance], iterator: DataIterator, sort_by_length: bool):
+        super().__init__()
+        self.instances = ensure_list(instances)
+        self.sort_by_length = sort_by_length
+        self.iterator = iterator
+
+        self.data_pivot = 0 # initial pointer
+
+    def sample(self, batch_size: int) -> Iterable[Instance]:
+        samples = self.instances[self.data_pivot : self.data_pivot + batch_size]
+        nsample = len(samples)
+        if nsample < batch_size:
+            samples += self.instances[0 : batch_size - nsample]
+            self.data_pivot = batch_size - nsample 
+            random.shuffle(self.instances)
+            if self.sort_by_length: # sort
+                self.instances[:] = sort_by_padding(
+                                            self.instances, 
+                                            self.iterator._sorting_keys,
+                                            self.iterator.vocab,
+                                            self.iterator._padding_noise,
+                                            reverse=True)
+                print('\n>>>>>>>|data| = {}, pivot = {}\n'.format(len(self.instances), self.data_pivot))
+        else:
+            self.data_pivot += batch_size
+
+        batch = Batch(samples)
+        batch.index_instances(self.iterator.vocab)
+        batch = batch.as_tensor_dict()
+        return batch 
+
+class DataLazyLoader(object):
+
+    def __init__(self, instances: Iterable[Instance], iterator: DataIterator, sort_by_length: bool):
+        super().__init__()
+        self.instances = ensure_list(instances)
+        self.sort_by_length = sort_by_length
+        self.iterator = iterator
+    
+    def nbatch(self):
+        return self.iterator.get_num_batches(self.instances)
+
+    def _iterate(self):
+        random.shuffle(self.instances)
+        if self.sort_by_length: 
+            self.instances[:] = sort_by_padding(
+                                        self.instances, 
+                                        self.iterator._sorting_keys,
+                                        self.iterator.vocab,
+                                        self.iterator._padding_noise,
+                                        reverse=True)
+            print('\n<<<<<<<|data| = {}\n'.format(len(self.instances)))
+        yield from self.instances
+        
+    def sample(self) -> Iterator[TensorDict]:
+        for samples in lazy_groups_of(self._iterate(), self.iterator._batch_size):
+            batch = Batch(samples)
+            batch.index_instances(self.iterator.vocab)
+            batch = batch.as_tensor_dict()
+            yield batch, len(samples)
+
 def rescale_gradients(model: Model, 
                       param_signatures: List[str], 
                       grad_norm: Optional[float] = None) -> Optional[float]:
@@ -174,9 +268,58 @@ def clip_parameters(model: Model,
             p.data.clamp_(-clip_value, clip_value)
     return None
 
+def decode_metrics(model, batch, training: bool, 
+                   optimizing_generator: bool = True,
+                   relying_on_generator: bool = True, 
+                   caching_feature_only: bool = False,
+                   retrive_crossentropy: bool = False,
+                   supervisely_training: bool = False,
+                   peep_prediction: bool = False):
+    # forward pass
+    output_dict = model(**batch, 
+                optimizing_generator = optimizing_generator,
+                relying_on_generator = relying_on_generator,
+                caching_feature_only = caching_feature_only,
+                retrive_crossentropy = retrive_crossentropy,
+                supervisely_training = supervisely_training)
+    try:
+        loss = rec_loss = kl_loss = gp_loss = bp_loss = None 
+        if training: # compulsory loss
+            loss = output_dict["loss"] # loss of the generator or discriminator
+            if loss is not None:
+                loss += model.get_regularization_penalty()
+            if 'kl_loss' in output_dict:
+                kl_loss = output_dict["kl_loss"]
+            if 'gp_loss' in output_dict:
+                gp_loss = output_dict["gp_loss"]
+            if 'bp_loss' in output_dict:
+                bp_loss = output_dict["bp_loss"]
+        
+        # can be added into compulsory loss in semi-supervised setting
+        if retrive_crossentropy: 
+            rec_loss = output_dict["ce_loss"]
+
+        if peep_prediction: #and not for_training:
+            output_dict = model.decode(output_dict)
+            tokens = output_dict['tokens'][:5]
+            labels = output_dict['srl_tags'][:5]
+            gold_srl = output_dict['gold_srl'][:5]
+            predicates = output_dict["predicate"]
+            pindexes = output_dict["predicate_index"]
+            for token, label, glabel, p, pid in zip(tokens, labels, gold_srl, predicates, pindexes):
+                xx = ['({}|{}: {}_{})'.format(idx, t, g, l) for idx, (t, g, l) in enumerate(zip(token, glabel, label))]
+                print('{} {}.{}\n'.format(xx, p, pid))
+    except KeyError:
+        if training:
+            raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"
+                               "in the output of model.forward(inputs). output_dict: {}".format(output_dict))
+        loss = rec_loss = kl_loss = bp_loss = gp_loss = None
+    return loss, rec_loss, kl_loss, bp_loss, gp_loss
+
 def get_metrics(model: Model, 
                 total_loss: float, 
                 num_batches: int, 
+                ce_loss: float = None,
                 kl_loss: float = None,
                 bp_loss: float = None,
                 gp_loss: float = None,
@@ -186,7 +329,7 @@ def get_metrics(model: Model,
                 C: float = None,
                 generator_loss: float = None,
                 discriminator_loss: float = None,
-                reconstruction_loss: float = None, 
+                crossentropy_loss: float = None, 
                 reset: bool = False) -> Dict[str, float]:
     """
     Gets the metrics but sets ``"loss"`` to
@@ -195,33 +338,26 @@ def get_metrics(model: Model,
     """
     metrics = model.get_metrics(reset=reset)
     metrics["loss"] = float(total_loss / num_batches) if num_batches > 0 else 0.0
-    if reconstruction_loss is not None:
-        metrics["rec_loss"] = float(reconstruction_loss / num_batches) if num_batches > 0 else 0.0
-    
-    if kl_loss is not None:
-        metrics["kl_loss"] = kl_loss 
-    
-    if bp_loss is not None:
-        metrics["bp_loss"] = bp_loss 
-    
-    if gp_loss is not None:
-        metrics["gp_loss"] = gp_loss 
-
     if generator_loss is not None:
         metrics["g_loss"] = generator_loss
-    
     if discriminator_loss is not None:
         metrics["d_loss"] = discriminator_loss 
+
+    if ce_loss is not None:
+        metrics["ce_loss"] = ce_loss 
+    if kl_loss is not None:
+        metrics["kl_loss"] = kl_loss 
+    if bp_loss is not None:
+        metrics["bp_loss"] = bp_loss 
+    if gp_loss is not None:
+        metrics["gp_loss"] = gp_loss 
     
     if L is not None:
         metrics['L'] = L
-    
     if L_u is not None:
         metrics['L_u'] = L_u
-        
     if H is not None:
         metrics['H'] = H
-        
     if C is not None:
         metrics['C'] = C 
 

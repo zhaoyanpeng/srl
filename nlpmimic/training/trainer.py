@@ -131,10 +131,10 @@ class TrainerPieces(NamedTuple):
         for name in tunable_parameter_names:
             logger.info(name)
         
-        TrainerPieces.check_data(train_dx_data)
-        TrainerPieces.check_data(train_dy_data, vocab)
-        #import sys
-        #sys.exit(0)
+        if train_dx_data is not None:
+            TrainerPieces.check_data(train_dx_data)
+        if train_dy_data is not None:
+            TrainerPieces.check_data(train_dy_data, vocab)
 
         return TrainerPieces(model, iterator,
                              train_data, train_dx_data, train_dy_data,

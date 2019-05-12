@@ -225,3 +225,10 @@ class SrlGraphEncoder(Seq2VecEncoder):
         else:
             wit = None
         return wit
+    
+    def get_input_dim(self) -> int:
+        return self._input_dim
+
+    def get_output_dim(self) -> int:
+        return self._dense_layer_dims[-1]
+
