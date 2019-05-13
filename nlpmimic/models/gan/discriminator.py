@@ -1,23 +1,15 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
 from typing import Tuple, Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
-from torch.nn.modules import Linear, Dropout
 import torch.nn.functional as F
+from torch.nn.modules import Dropout
 
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
-from allennlp.modules import Seq2VecEncoder
 from allennlp.common.checks import ConfigurationError
 from allennlp.modules.token_embedders import Embedding
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed, TextFieldEmbedder
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_decode
-
+from allennlp.modules import Seq2VecEncoder, TextFieldEmbedder
 
 @Model.register("sri_gan_dis")
 class SrlGanDiscriminator(Model):
@@ -61,14 +53,14 @@ class SrlGanDiscriminator(Model):
         features = self.encoder(mask, embedded_nodes, edge_types, edge_type_onehots=edge_type_onehots)
         if caching_feature_only: # for feature matching
             self.feature_retained = torch.mean(features, 0)
-            print('------------------------------------- GEN: cache features')
+            #print('------------------------------------- GEN: cache features')
             return None
         
         if optimizing_generator and self.feature_matching:
             # generator loss: using feature matching
             diff = torch.mean(features, 0) - self.feature_retained 
             fm_loss = torch.sum(diff ** 2)
-            print('--------------------------------------- GEN: fm loss')
+            #print('--------------------------------------- GEN: fm loss')
             return fm_loss
         elif optimizing_generator:
             # generator loss: sigmoid loss
@@ -76,7 +68,7 @@ class SrlGanDiscriminator(Model):
             labels = mask[:, 0].detach().clone().fill_(1).float()
 
             loss_ce = F.binary_cross_entropy_with_logits(logits, labels, reduction='mean')
-            print('--------------------------------------- GEN: fake input')
+            #print('--------------------------------------- GEN: fake input')
             return loss_ce
         elif not optimizing_generator and relying_on_generator:
             # discriminator loss: fake data part
@@ -85,7 +77,7 @@ class SrlGanDiscriminator(Model):
 
             loss_ce = F.binary_cross_entropy_with_logits(logits, labels, reduction='mean')
 
-            print('--------------------------------------- DIS: fake input')
+            #print('--------------------------------------- DIS: fake input')
             return loss_ce
         elif not optimizing_generator:
             # discriminator loss: real data part
@@ -98,7 +90,7 @@ class SrlGanDiscriminator(Model):
             labels += noise 
 
             loss_ce = F.binary_cross_entropy_with_logits(logits, labels, reduction='mean')
-            print('--------------------------------------- DIS: real input')
+            #print('--------------------------------------- DIS: real input')
             return loss_ce
         else:
             return None

@@ -1,7 +1,3 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
 from typing import Tuple, Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
@@ -11,7 +7,7 @@ from torch.nn.modules import Linear, Dropout
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.modules.token_embedders import Embedding
-from allennlp.modules import Seq2VecEncoder, Seq2SeqEncoder
+from allennlp.modules import Seq2SeqEncoder
 from allennlp.common.checks import ConfigurationError
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.modules import TimeDistributed, TextFieldEmbedder

@@ -75,7 +75,7 @@ class GanSemanticRoleLabeler(Model):
 
         ### eveluation only 
         if not self.training: #or supervisely_training:
-            print('\n------     ---------     ---------     ---------- Evaluation or supervised training')
+            #print('\n------     ---------     ---------     ---------- Evaluation or supervised training')
             output_dict['loss'] = None
             return output_dict
         ### evaluation over
@@ -89,7 +89,7 @@ class GanSemanticRoleLabeler(Model):
         if not optimizing_generator and not relying_on_generator:
             _, arg_labels, _ = self.generator.select_args(None, srl_frames, None, argument_indices) 
 
-            print('\n------     ---------     ---------     ---------- DIS with real input')
+            #print('\n------     ---------     ---------     ---------- DIS with real input')
             loss = self.discriminator(argument_mask, embedded_nodes, arg_labels,
                                       optimizing_generator=optimizing_generator,
                                       relying_on_generator=relying_on_generator,
@@ -103,7 +103,7 @@ class GanSemanticRoleLabeler(Model):
                 self.generator.gumbel_relax(argument_mask, arg_logits)
             labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
 
-            print('\n------     ---------     ---------     ---------- Relying on the GEN')
+            #print('\n------     ---------     ---------     ---------- Relying on the GEN')
             loss = self.discriminator(argument_mask, embedded_nodes, arg_labels, 
                                       optimizing_generator=optimizing_generator,
                                       relying_on_generator=relying_on_generator,
@@ -118,6 +118,7 @@ class GanSemanticRoleLabeler(Model):
         return output_dict 
 
     def regularize_labels(self, mask: torch.Tensor, label_onehots: torch.Tensor, loss_type: str):
+        label_onehots = label_onehots * mask.unsqueeze(-1).float()
         batch_probs = torch.sum(label_onehots, 1)
         batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
         # assumming no empty label so pivot is 0

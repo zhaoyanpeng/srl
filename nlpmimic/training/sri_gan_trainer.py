@@ -6,8 +6,7 @@ import torch.optim.lr_scheduler
 
 from allennlp.common import Params
 from allennlp.common.checks import ConfigurationError
-from allennlp.common.util import (dump_metrics, gpu_memory_mb, parse_cuda_device, peak_memory_mb,
-                                  get_frozen_and_tunable_parameter_names, add_noise_to_dict_values)
+from allennlp.common.util import (dump_metrics, gpu_memory_mb, parse_cuda_device, peak_memory_mb)
 from allennlp.common.tqdm import Tqdm
 from allennlp.data.instance import Instance
 from allennlp.data.iterators.data_iterator import DataIterator, TensorDict
@@ -307,7 +306,7 @@ class GanSrlTrainer(Trainer):
             peep = False
             if batches_this_epoch % 50 == 0:
                 peep = True 
-                print('\n----------------------0. model.tau is {}'.format(self.model.tau.item()))
+                #print('\n----------------------0. model.tau is {}'.format(self.model.tau.item()))
             batches_this_epoch += 1
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
@@ -330,7 +329,7 @@ class GanSrlTrainer(Trainer):
                 g_loss = ce_loss = kl_loss = bp_loss = gen_batch_grad_norm = None
                 #if not optimize_dis: # anyway, we must optimize something with this batch
                 #    optimnize_dis = True
-                logger.info('\n------skip GENERATOR')
+                #logger.info('\n------skip GENERATOR')
 
            
             if epoch >= self.dis_skip_nepoch and optimize_dis: #and g_loss <= 0.3: # do optimize the discriminator
@@ -350,7 +349,7 @@ class GanSrlTrainer(Trainer):
                 #logger.info('------------------------optimizing the discriminator {}'.format(dis_nbatch))
             else:
                 d_loss = dis_batch_grad_norm = None 
-                logger.info('\n------skip DISCRIMINATOR')
+                #logger.info('\n------skip DISCRIMINATOR')
 
             if gen_nbatch >= self.gen_max_nbatch:
                 optimize_gen = False
