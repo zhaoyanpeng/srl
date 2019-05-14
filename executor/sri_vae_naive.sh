@@ -7,9 +7,9 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_naive_c_1.05_vae_tlemma_sell_hard_alpha.02"
-#model_name="srl_tune"
-param_name="srl_vae_naive.jsonnet"
+model_name="sri_naive_c_1.05_vae_tlemma_5.0_hard_alpha.2_sp2.10_64"
+model_name="srl_tune"
+param_name="sri_vae_naive.jsonnet"
 model_path=$droot/model
 
 library="nlpmimic"

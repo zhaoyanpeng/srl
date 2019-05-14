@@ -283,7 +283,7 @@ def decode_metrics(model, batch, training: bool,
                 retrive_crossentropy = retrive_crossentropy,
                 supervisely_training = supervisely_training)
     try:
-        loss = rec_loss = kl_loss = gp_loss = bp_loss = None 
+        loss = ce_loss = kl_loss = gp_loss = bp_loss = None 
         if training: # compulsory loss
             loss = output_dict["loss"] # loss of the generator or discriminator
             if loss is not None:
@@ -297,7 +297,7 @@ def decode_metrics(model, batch, training: bool,
         
         # can be added into compulsory loss in semi-supervised setting
         if retrive_crossentropy: 
-            rec_loss = output_dict["ce_loss"]
+            ce_loss = output_dict["ce_loss"]
 
         if peep_prediction: #and not for_training:
             output_dict = model.decode(output_dict)
@@ -313,8 +313,58 @@ def decode_metrics(model, batch, training: bool,
         if training:
             raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"
                                "in the output of model.forward(inputs). output_dict: {}".format(output_dict))
-        loss = rec_loss = kl_loss = bp_loss = gp_loss = None
-    return loss, rec_loss, kl_loss, bp_loss, gp_loss
+        loss = ce_loss = kl_loss = bp_loss = gp_loss = None
+    return loss, ce_loss, kl_loss, bp_loss, gp_loss
+
+def decode_metrics_vae(model, batch, training: bool, 
+                   retrive_crossentropy: bool = False,
+                   supervisely_training: bool = False,
+                   peep_prediction: bool = False):
+    # forward pass
+    output_dict = model(**batch, 
+                retrive_crossentropy = retrive_crossentropy,
+                supervisely_training = supervisely_training)
+    try:
+        loss = ce_loss = kl_loss = L = L_u = H = C = None 
+        if training: # compulsory loss
+            loss = output_dict["loss"] # loss of the generator or discriminator
+            if loss is not None:
+                loss += model.get_regularization_penalty()
+            if 'kl_loss' in output_dict:
+                kl_loss = output_dict["kl_loss"]
+            if 'gp_loss' in output_dict:
+                gp_loss = output_dict["gp_loss"]
+            if 'bp_loss' in output_dict:
+                bp_loss = output_dict["bp_loss"]
+            if 'L' in output_dict:
+                L = output_dict['L']
+            if 'L_u' in output_dict:
+                L_u = output_dict['L_u']
+            if 'H' in output_dict:
+                H = output_dict['H']
+            if 'C' in output_dict:
+                C = output_dict['C']
+        
+        # can be added into compulsory loss in semi-supervised setting
+        if retrive_crossentropy: 
+            ce_loss = output_dict["ce_loss"]
+
+        if peep_prediction: #and not for_training:
+            output_dict = model.decode(output_dict)
+            tokens = output_dict['tokens'][:5]
+            labels = output_dict['srl_tags'][:5]
+            gold_srl = output_dict['gold_srl'][:5]
+            predicates = output_dict["predicate"]
+            pindexes = output_dict["predicate_index"]
+            for token, label, glabel, p, pid in zip(tokens, labels, gold_srl, predicates, pindexes):
+                xx = ['({}|{}: {}_{})'.format(idx, t, g, l) for idx, (t, g, l) in enumerate(zip(token, glabel, label))]
+                print('{} {}.{}\n'.format(xx, p, pid))
+    except KeyError:
+        if training:
+            raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"
+                               "in the output of model.forward(inputs). output_dict: {}".format(output_dict))
+        loss = ce_loss = kl_loss = L = L_u = H = C = None 
+    return loss, ce_loss, kl_loss, L, L_u, H, C 
 
 def get_metrics(model: Model, 
                 total_loss: float, 

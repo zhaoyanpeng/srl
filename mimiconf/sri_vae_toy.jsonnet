@@ -105,7 +105,7 @@
         "batch_size": 3 
     },
     "trainer": {
-        "type": "srl_vae",
+        "type": "sri_vae",
         "num_epochs": 3,
         "grad_clipping": 1.0,
         "patience": 20,

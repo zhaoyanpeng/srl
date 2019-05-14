@@ -582,7 +582,7 @@ class GanSrlTrainer(Trainer):
     def rescale_gradients(self, parameter_names: List[str]) -> Optional[float]:
         return mimic_training_util.rescale_gradients(self.model, parameter_names, self._grad_norm)
 
-    def gradient(self, optimizer: torch.optim.Optimizer, for_generator: bool, batch_numb_total: int) -> float:
+    def gradient(self, optimizer: torch.optim.Optimizer, for_generator: bool, batch_num_total: int) -> float:
         # this rescales gradients of all the parameters of the model, it would be better to update 
         # gradients of generator's and discriminator's parameters respectively. To do this, we need
         # to retain parameter names of the generator and discriminator.

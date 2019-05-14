@@ -4,8 +4,8 @@ if [ ! -z $1 ]; then
     flag=$1
 fi
 
-model_name="srl_vae_toy"
-param_name="srl_vae_toy.jsonnet"
+model_name="sri_vae_toy"
+param_name="sri_vae_toy.jsonnet"
 param_path="$root/mimiconf"
 model_path="/disk/scratch1/s1847450/model"
 
