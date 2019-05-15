@@ -5,6 +5,7 @@ import logging
 import re, sys
 
 from overrides import overrides
+from collections import Counter
 
 from allennlp.common.checks import ConfigurationError
 from allennlp.common.file_utils import cached_path
@@ -38,6 +39,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     """
     _DUMMY = '_'
     _EMPTY_LABEL = 'O'
+    _EMPTY_LEMMA = 'M' # masked lemma
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic' # srl_gan
@@ -47,6 +49,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
                  lemma_indexers: Dict[str, TokenIndexer] = None,
+                 lemma_file: str = None,
+                 lemma_use_firstk: int = 5000, # used as frequency when it is smaller than 100
                  feature_labels: Sequence[str] = (),
                  maximum_length: float = float('inf'),
                  valid_srl_labels: Sequence[str] = (),
@@ -72,6 +76,35 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         self.allow_null_predicate = allow_null_predicate
         self.instance_type = instance_type
 
+        try:
+            self.lemma_set = None
+            if lemma_file is not None:
+                lemma_dict = Counter() 
+                with open(lemma_file, 'r') as lemmas:
+                    for line in lemmas:
+                        k, v = line.strip().split()
+                        lemma_dict[k] += int(v)
+                # construct vocab
+                lemma_set = set()
+                if lemma_use_firstk > 100: # first k most common lemmas
+                    for idx, (k, v) in enumerate(lemma_dict.most_common()):
+                        if idx >= lemma_use_firstk: break
+                        lemma_set.add(k)
+                else: # lemmas with a frequency above 'lemma_use_firstk'
+                    for k, v in lemma_dict.most_common():
+                        if v < lemma_use_firstk: continue
+                        lemma_set.add(k)
+                self.lemma_set = lemma_set
+        except Exception as e:
+            logger.info("Reading vocabulary of lemmas failed: %s", lemma_file)
+            print('----------------fuck', e)
+            self.lemma_set = None
+    
+    def filter_lemmas(self, lemmas: List[str]) -> List[str]:
+        if self.lemma_set is not None:
+            lemmas = [lemma if lemma in self.lemma_set else self._EMPTY_LEMMA for lemma in lemmas] 
+        return lemmas
+
     @overrides
     def _read(self, 
               context_path: str, 
@@ -85,7 +118,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         xxl: int = 0 
         isample: int = 0
         for sentence in self._sentences(context_path, appendix_path, appendix_type): 
-            lemmas = sentence.predicted_lemmas
+            lemmas = self.filter_lemmas(sentence.lemmas)
             tokens = [Token(t) for t in sentence.tokens]
             pos_tags = sentence.predicted_pos_tags
             
