@@ -10,40 +10,25 @@
         "instance_type": "srl_graph"
     },
   
-    "reader_mode": "srl_gan",
+    "reader_mode": "basic",
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
+    "train_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
+    "test_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
     "validation_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
+
+    //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
+    //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/bitgan/verb.bit",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/bitgan/noun.bit",
 
     "model": {
         "autoencoder": {
-            //"type": "srl_graph_ae",
-            //"type": "srl_basic_ae",
             "type": "srl_lemma_ae",
-            "nsample": 2,
-            "encoder": {
-                "type": "srl_graph_encoder",
-                "input_dim": 2, 
-                "layer_timesteps": [2, 2, 2, 2],
-                "residual_connection_layers": {"2": [0], "3": [0, 1]},
-                "dense_layer_dims": [2],
-                "node_msg_dropout": 0.3,
-                "residual_dropout": 0.3,
-                "aggregation_type": "a",
-                "combined_vectors": false,
-            },
             "decoder": {
                 //"type": "srl_graph_decoder",
                 "type": "srl_basic_decoder",
                 //"input_dim": 7, // 3 + 2 + 2
                 "input_dim": 4, // 2 + 2
                 "dense_layer_dims": [5, 5],
-            },
-            "sampler": {
-                "type": "gaussian",
-                "input_dim": 2, 
-                "output_dim": 3,  
             },
         },
 
@@ -116,14 +101,6 @@
         "shuffle": false,
         "validation_metric": "+f1-measure-overall",
         "cuda_device": -1,
-        "gen_skip_nepoch": 0,
-        "gen_pretraining": -1,  
-        "gen_loss_scalar": 1.0,
-        "kld_loss_scalar": 0.5,
-        "kld_update_rate": 0.05,
-        "kld_update_unit": 5,
-        "bpr_loss_scalar": 1.0,
-        "sort_by_length": false,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95
