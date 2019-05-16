@@ -26,7 +26,7 @@ class SrlBasicDecoder(Seq2SeqEncoder):
                  dense_layer_dims: List[int],
                  dropout: float = 0.0) -> None:
         super(SrlBasicDecoder, self).__init__()
-        self.signature = 'decoder'
+        self.signature = 'srl_basic_decoder'
 
         self._input_dim = input_dim 
         self._dense_layer_dims = dense_layer_dims 

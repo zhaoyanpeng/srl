@@ -1,0 +1,95 @@
+from typing import Set, Dict, List, TextIO, Optional, Any
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from allennlp.modules import Seq2SeqEncoder
+from allennlp.common.checks import ConfigurationError
+
+from nlpmimic.nn.util import gumbel_softmax
+
+@Seq2SeqEncoder.register("srl_lstms_decoder")
+class SrlLstmsDecoder(Seq2SeqEncoder):
+    def __init__(self, 
+                 input_dim: int, 
+                 hidden_dim: int = None,
+                 rnn_cell_type: str = 'gru',
+                 straight_through: bool = True,
+                 dense_layer_dims: List[int] = None,
+                 dropout: float = 0.0) -> None:
+        super(SrlLstmsDecoder, self).__init__()
+        self.signature = 'srl_lstms_decoder'
+
+        self._input_dim = input_dim 
+        self._hidden_dim = hidden_dim
+        self._dense_layer_dims = dense_layer_dims 
+        self._straight_through = straight_through
+        
+        if rnn_cell_type == 'gru':
+            self._rnn = torch.nn.GRUCell(self._input_dim, self._hidden_dim)
+        elif rnn_cell_type == 'rnn':
+            self._rnn = torch.nn.RNNCell(self._input_dim, self._hidden_dim)
+        elif rnn_cell_type == 'lstm':
+            self._rnn = torch.nn.LSTMCell(self._input_dim, self._hidden_dim)
+        else:
+            raise ConfigurationError('Invalid rnn cell type.')
+        
+        self._dense_layers = []
+        if dense_layer_dims is not None:
+            for i_layer, dim in enumerate(self._dense_layer_dims):
+                dense_layer = torch.nn.Linear(input_dim, dim, bias=True)
+                setattr(self, 'dense_layer_{}'.format(i_layer), dense_layer)
+                self._dense_layers.append(dense_layer)
+                input_dim = dim
+        
+        self._dropout = torch.nn.Dropout(dropout)
+    
+    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor) -> None: 
+        self._output_dim = output_dim 
+        self._lemma_embedder_weight = lemma_embedder_weight 
+        
+        input_dim = self._hidden_dim
+        if len(self._dense_layers) > 1: 
+            input_dim = self._dense_layer_dims[-1] 
+        label_layer = torch.nn.Linear(input_dim, self._output_dim)
+        setattr(self, 'label_projection_layer', label_layer)
+
+    def forward(self, 
+                embedded_labels: torch.Tensor,
+                embedded_predicates: torch.Tensor) -> torch.Tensor:
+        batch_size, ntimestep, _ = embedded_labels.size()
+
+        logits = []
+        hx = torch.zeros((batch_size, self._hidden_dim), device=embedded_labels.device)
+        embedded_args = embedded_predicates # predicates and labels will be concatenated together
+        for i in range(ntimestep):
+            input_i = torch.cat([embedded_args, embedded_labels[:, i, :]], -1) 
+            hx = self._rnn(input_i, hx) 
+            embedded_args, logits_i = self.customize_hidden_states(hx)
+            logits.append(logits_i)
+        logits = torch.stack(logits, 1)
+
+        return logits 
+   
+    def customize_hidden_states(self, hidden_states: torch.Tensor):
+        hidden_states = self.multi_dense(hidden_states)
+        logits = self.label_projection_layer(hidden_states)
+        gumbel_hard, gumbel_soft, _ = gumbel_softmax(logits)
+
+        label_relaxed = gumbel_hard if self._straight_through else gumbel_soft
+        hidden_states = torch.matmul(label_relaxed, self._lemma_embedder_weight) 
+        
+        return hidden_states, logits
+
+    def multi_dense(self, embedded_nodes: torch.Tensor) -> torch.Tensor:
+        for dense_layer in self._dense_layers:
+            embedded_nodes = torch.tanh(dense_layer(embedded_nodes))
+            embedded_nodes = self._dropout(embedded_nodes)
+        return embedded_nodes
+    
+    def get_input_dim(self) -> int:
+        return self._input_dim
+
+    def get_output_dim(self) -> int:
+        return self._output_dim
+

@@ -13,9 +13,7 @@ from allennlp.modules import Seq2VecEncoder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.common.checks import ConfigurationError
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed, TextFieldEmbedder
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_decode
+from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed
 
 
 @Seq2VecEncoder.register("srl_graph_encoder")
