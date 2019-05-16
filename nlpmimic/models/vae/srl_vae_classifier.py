@@ -126,8 +126,10 @@ class SrlVaeClassifier(Model):
         batch_size, seq_length, _ = logits.size()
 
         self.tau.data.clamp_(min = self.minimum_tau)
+        #gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
+        #    F.log_softmax(logits.view(-1, self.nclass), dim=-1), tau=self.tau)
         gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
-            F.log_softmax(logits.view(-1, self.nclass), dim=-1), tau=self.tau)
+            logits.view(-1, self.nclass), tau=self.tau)
             
         gumbel_hard = gumbel_hard.view([batch_size, seq_length, self.nclass]) 
         gumbel_soft = gumbel_soft.view([batch_size, seq_length, self.nclass]) 
