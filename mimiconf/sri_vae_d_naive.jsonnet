@@ -6,6 +6,8 @@
         "type":"conll2009",
         //"maximum_length": 80,
         //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
+        "lemma_file":  "/disk/scratch1/s1847450/data/conll09/all.moved.arg.vocab",
+        "lemma_use_firstk": 20,
         "feature_labels": ["pos", "dep"],
         "move_preposition_head": true,
         "max_num_argument": 7,
@@ -18,26 +20,40 @@
     },
   
     "reader_mode": "srl_gan",
-    "dis_param_name": ["discriminator"],
     "validation_ontraining_data": false,
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
+    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
+    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
+
+    //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
+    //"datasets_for_vocab_creation": ["vocab"],
+
+    //"old_model_path": "/disk/scratch1/s1847450/model/srl_verb_lyu/best.th",
+    //"update_key_set": {"text_field_embedder": "token_embedder", "encoder": "seq_encoder"},
 
     "model": {
-        "discriminator": {
-            "type": "sri_gan_dis",
-            "encoder": {
-                "type": "srl_graph_encoder",
-                "input_dim": 100, 
-                "layer_timesteps": [2, 2, 2, 2],
-                "residual_connection_layers": {"2": [0], "3": [0, 1]},
-                "dense_layer_dims": [100],
-                "node_msg_dropout": 0.3,
-                "residual_dropout": 0.3,
-                "aggregation_type": "a",
-                "combined_vectors": false,
+        "autoencoder": {
+            "type": "srl_lstms_ae",
+            "decoder": {
+                "type": "srl_lstms_decoder",
+                "input_dim": 200, // predicate + label,
+                "hidden_dim": 200,
+                "dropout": 0.1,
+            },
+        },
+        "classifier": {
+            "type": "srl_vae_classifier",
+            "token_embedder": {
+                "token_embedders": {
+                    "elmo": {
+                        "type": "elmo_token_embedder",
+                        "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
+                        "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
+                        "do_layer_norm": false,
+                        "dropout": 0.0
+                    }
+                }
             },
             "lemma_embedder": {
                 "token_embedders": {
@@ -62,22 +78,6 @@
                 "trainable": true, 
                 "sparse": false 
             },
-            "feature_matching": false,
-        },
-
-        "generator": {
-            "type": "sri_gan_gen",
-            "token_embedder": {
-                "token_embedders": {
-                    "elmo": {
-                        "type": "elmo_token_embedder",
-                        "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
-                        "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
-                        "do_layer_norm": false,
-                        "dropout": 0.0
-                    }
-                }
-            },
             "seq_encoder": {
                 "type": "stacked_bidirectional_lstm",
                 "input_size": 1124,
@@ -94,44 +94,32 @@
             "suppress_nonarg": true,
         },
 
-        "type": "sri_gan",
+        "type": "srl_vae_d",
+        "nsampling": 10,
+        "alpha": 0.5,
         "straight_through": true,
-        "use_uniqueness_prior": false,
-        "uniqueness_loss_type": 'reverse_kl',
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 128 
+        "batch_size": 150 
     },
     "trainer": {
-        "type": "sri_gan",
+        "type": "sri_vae",
         "num_epochs": 1000,
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 2,
+        "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 2,
-        "dis_min_loss": 0.0,
-        "dis_skip_nepoch": 0,
+        "cuda_device": 1,
         "gen_skip_nepoch": 0,
-        "gen_pretraining": -1,  
-        "dis_loss_scalar": 0.05,
+        "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,
-        "kld_loss_scalar": 0.5,
-        "bpr_loss_scalar": 1.0,
-        "sort_by_length": true,
-        "consecutive_update": true,
-        "dis_max_nbatch": 1,
-        "gen_max_nbatch": 1,
+        "shuffle_arguments": true,
         "optimizer": {
-          "type": "adadelta",
-          "rho": 0.95
+            "type": "adadelta",
+            "rho": 0.95
         },
-        "optimizer_dis": {
-          "type": "adadelta",
-          "rho": 0.95
-        }
     }
 }

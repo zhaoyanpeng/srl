@@ -179,15 +179,31 @@ def sort_by_padding(instances: List[Instance],
     instances_with_lengths.sort(key=lambda x: x[0], reverse=reverse)
     return [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
 
+def shuffle_argument_indices(instances: Iterable[Instance]):
+    for instance in instances:
+        arg_mask = instance['argument_mask'].sequence_index
+        arg_indices = instance['argument_indices'].sequence_index 
+        narg = sum(arg_mask)
+        valid_arg_indices = arg_indices[:narg]
+        random.shuffle(valid_arg_indices)
+        arg_indices[:narg] = valid_arg_indices
+
 class DataSampler(object):
     
-    def __init__(self, instances: Iterable[Instance], iterator: DataIterator, sort_by_length: bool):
+    def __init__(self, 
+                 instances: Iterable[Instance], 
+                 iterator: DataIterator, 
+                 sort_by_length: bool,
+                 shuffle_arguments: bool = False):
         super().__init__()
         self.instances = ensure_list(instances)
         self.sort_by_length = sort_by_length
         self.iterator = iterator
+        self.shuffle_arguments = shuffle_arguments
 
         self.data_pivot = 0 # initial pointer
+        
+        random.shuffle(self.instances)
 
     def sample(self, batch_size: int) -> Iterable[Instance]:
         samples = self.instances[self.data_pivot : self.data_pivot + batch_size]
@@ -207,6 +223,8 @@ class DataSampler(object):
         else:
             self.data_pivot += batch_size
 
+        if self.shuffle_arguments:
+            shuffle_argument_indices(samples)
         batch = Batch(samples)
         batch.index_instances(self.iterator.vocab)
         batch = batch.as_tensor_dict()
@@ -214,11 +232,18 @@ class DataSampler(object):
 
 class DataLazyLoader(object):
 
-    def __init__(self, instances: Iterable[Instance], iterator: DataIterator, sort_by_length: bool):
+    def __init__(self, 
+                 instances: Iterable[Instance], 
+                 iterator: DataIterator, 
+                 sort_by_length: bool,
+                 shuffle_arguments: bool = False):
         super().__init__()
         self.instances = ensure_list(instances)
         self.sort_by_length = sort_by_length
         self.iterator = iterator
+        self.shuffle_arguments = shuffle_arguments
+
+        random.shuffle(self.instances)
     
     def nbatch(self):
         return self.iterator.get_num_batches(self.instances)
@@ -234,9 +259,11 @@ class DataLazyLoader(object):
                                         reverse=True)
             print('\n<<<<<<<|data| = {}\n'.format(len(self.instances)))
         yield from self.instances
-        
+
     def sample(self) -> Iterator[TensorDict]:
         for samples in lazy_groups_of(self._iterate(), self.iterator._batch_size):
+            if self.shuffle_arguments:
+                shuffle_argument_indices(samples)
             batch = Batch(samples)
             batch.index_instances(self.iterator.vocab)
             batch = batch.as_tensor_dict()

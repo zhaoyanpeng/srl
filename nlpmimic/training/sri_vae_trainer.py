@@ -60,6 +60,7 @@ class VaeSrlTrainer(Trainer):
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
                  sort_by_length: bool = False,
+                 shuffle_arguments: bool = False,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
                  gen_max_nbatch: int = 0,
@@ -144,9 +145,11 @@ class VaeSrlTrainer(Trainer):
         self.gen_max_nbatch = gen_max_nbatch
         
         if self.train_dx_data is not None:
-            self.noun_sampler = DataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+            self.noun_sampler = DataLazyLoader(
+                self.train_dx_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
         if self.train_dy_data is not None:
-            self.verb_sampler = DataSampler(self.train_dy_data, self.iterator, self.sort_by_length) 
+            self.verb_sampler = DataSampler(
+                self.train_dy_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments) 
     
     def batch_loss(self, batch, 
                    training: bool = False, 
@@ -210,6 +213,10 @@ class VaeSrlTrainer(Trainer):
             batch_num_total = self._batch_num_total
             
             verb_batch = self.verb_sampler.sample(batch_size) 
+            
+            #print()
+            #print(verb_batch['argument_indices'])
+            #print(noun_batch['argument_indices'])
 
             self.optimizer.zero_grad()
 
@@ -566,6 +573,7 @@ class VaeSrlTrainer(Trainer):
 
         # process input data
         sort_by_length = params.pop("sort_by_length", False)
+        shuffle_arguments = params.pop("shuffle_arguments", False)
         
         # parameters for wgan
         clip_val = params.pop("clip_val", 0.01)
@@ -663,6 +671,7 @@ class VaeSrlTrainer(Trainer):
                    use_wgan = use_wgan,
                    clip_val = clip_val,
                    sort_by_length = sort_by_length,
+                   shuffle_arguments = shuffle_arguments,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
                    gen_max_nbatch = gen_max_nbatch,

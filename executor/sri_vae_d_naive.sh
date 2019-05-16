@@ -7,8 +7,8 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="srl_arg_c_1.05_t1_fixed_flip_0.0r_kl_nln.5_lp100"
-param_name="srl_argument.jsonnet"
+model_name="sri_vae_d_hard_alpha.5_150_v20_rnd_sell"
+param_name="sri_vae_d_naive.jsonnet"
 model_path=$droot/model
 
 library="nlpmimic"
@@ -20,14 +20,13 @@ echo "Be careful this may delete "$this_model
 if [ $flag = "remove" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf
-
-    nohup python -m allennlp.run train $param_path/$param_name -s $this_model --include-package $library > $log_file 2>&1 &
+    
+    nohup python -m allennlp.run train $param_path/$param_name -s $this_model --include-package $library > $log_file 2>&1 & 
 elif [ $flag = "recover" ]; then
     nohup python -m allennlp.run train $param_path/$param_name -s $this_model -r --include-package $library >> $log_file 2>&1 &
 elif [ $flag = "tune" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf
-    
     allennlp train $param_path/$param_name -s $this_model --include-package $library
 else
     allennlp train $param_path/$param_name -s $this_model --include-package $library
