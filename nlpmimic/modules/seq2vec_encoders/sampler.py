@@ -6,6 +6,16 @@ import torch.nn.functional as F
 from allennlp.modules import Seq2VecEncoder
 
 
+@Seq2VecEncoder.register("uniform")
+class SamplerUniform(Seq2VecEncoder):
+    """ Uniform distribution over the space of exponentially many discrete structures
+        The probability of each structure is nearly zero, implying -inf in log form.
+        So why do we bother to include it as a part of losses? Just return zero! 
+    """
+    def __init__(self):
+        super(SamplerUniform, self).__init__()
+        pass
+
 @Seq2VecEncoder.register("gaussian")
 class SamplerGaussian(Seq2VecEncoder):
     

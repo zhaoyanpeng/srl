@@ -8,6 +8,7 @@ others are AllenNLP modules.
 from allennlp.modules.seq2vec_encoders import _Seq2VecWrapper 
 from allennlp.modules.seq2vec_encoders.seq2vec_encoder import Seq2VecEncoder
 
+from nlpmimic.modules.seq2vec_encoders.sampler import SamplerUniform
 from nlpmimic.modules.seq2vec_encoders.sampler import SamplerGaussian
 from nlpmimic.modules.seq2vec_encoders.srl_gan_discriminator import GanSrlDiscriminator
 

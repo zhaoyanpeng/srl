@@ -22,9 +22,9 @@
     "reader_mode": "srl_gan",
     "validation_ontraining_data": false,
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
+    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
+    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
 
     //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     //"datasets_for_vocab_creation": ["vocab"],
@@ -35,12 +35,16 @@
     "model": {
         "autoencoder": {
             "type": "srl_lstms_ae",
+            "alpha": 0.0,
             "decoder": {
                 "type": "srl_lstms_decoder",
                 "input_dim": 200, // predicate + label,
                 "hidden_dim": 200,
                 "dropout": 0.1,
             },
+            "sampler": {
+                "type": "uniform",
+            }
         },
         "classifier": {
             "type": "srl_vae_classifier",
@@ -95,14 +99,14 @@
         },
 
         "type": "srl_vae_d",
-        "nsampling": 10,
+        "nsampling": 1,
         "alpha": 0.5,
         "straight_through": true,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 150 
+        "batch_size": 128 
     },
     "trainer": {
         "type": "sri_vae",
@@ -112,11 +116,11 @@
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 1,
+        "cuda_device": 3,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,
-        "shuffle_arguments": true,
+        "shuffle_arguments": false,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

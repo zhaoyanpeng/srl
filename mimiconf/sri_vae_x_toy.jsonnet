@@ -18,12 +18,19 @@
 
     "model": {
         "autoencoder": {
-            "type": "srl_lstms_ae",
+            //"type": "srl_lstms_ae",
+            "type": "srl_basic_ae",
+            "alpha": 0.5,
             "decoder": {
-                "type": "srl_lstms_decoder",
+                //"type": "srl_lstms_decoder",
+                "type": "srl_basic_decoder",
                 "input_dim": 4, //  2 + 2
                 "hidden_dim": 3, 
+                "dense_layer_dims": [5, 5],
             },
+            "sampler": {
+                "type": "uniform",
+            }
         },
 
         "classifier": {
@@ -68,7 +75,7 @@
                 "recurrent_dropout_probability": 0.0,
                 "use_highway": true
             },
-            "tau": 0.01,
+            "tau": 1,
             "tunable_tau": false,
             "psign_dim": 2,
             "seq_projection_dim": null,
@@ -76,7 +83,8 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_d",
+        //"type": "srl_vae_d",
+        "type": "srl_vae_y",
         "alpha": 0.5,
         "nsampling": 2,
         "straight_through": true,

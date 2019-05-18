@@ -221,7 +221,7 @@ class VaeSrlTrainer(Trainer):
             self.optimizer.zero_grad()
 
             ### labeled data
-            loss_verb, _, _, L, _, _, C = self.batch_loss(
+            loss_verb, _, _, L, _, _, C, KL = self.batch_loss(
                                         verb_batch, 
                                         training=True, 
                                         retrive_crossentropy = False, 
@@ -229,7 +229,7 @@ class VaeSrlTrainer(Trainer):
                                         peep_prediction=False)
 
             ### unlabeled data
-            loss_noun, ce_loss, kl_loss, _, L_u, H, _ = self.batch_loss(
+            loss_noun, ce_loss, kl_loss, _, L_u, H, _, KL = self.batch_loss(
                                         noun_batch, 
                                         training=True, 
                                         retrive_crossentropy = True, 
@@ -259,7 +259,8 @@ class VaeSrlTrainer(Trainer):
                                                       L = L,
                                                       L_u = L_u,
                                                       H = H,
-                                                      C = C)
+                                                      C = C,
+                                                      KL = KL)
 
             description = training_util.description_from_metrics(metrics)
             train_generator_tqdm.set_description(description, refresh=False)
@@ -457,7 +458,7 @@ class VaeSrlTrainer(Trainer):
         val_loss, batches_this_epoch = 0, 0
         for batch in val_generator_tqdm:
 
-            _, loss, _, _, _, _, _ = self.batch_loss(batch, training = False,
+            _, loss, _, _, _, _, _, _ = self.batch_loss(batch, training = False,
                                                 retrive_crossentropy = True, # implying gold labels exist
                                                 peep_prediction = True)
             if loss is not None:

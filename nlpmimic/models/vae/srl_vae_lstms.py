@@ -9,12 +9,15 @@ from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed 
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
 
+from nlpmimic.modules.seq2vec_encoders.sampler import SamplerUniform
+
 @Model.register("srl_lstms_ae")
 class SrlLstmsAutoencoder(Model):
     def __init__(self, vocab: Vocabulary,
                  encoder: Seq2SeqEncoder = None, # a latent z
                  decoder: Seq2SeqEncoder = None, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder = None, # posterior distribution
+                 alpha: float = 0.5,      # kl weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -27,6 +30,7 @@ class SrlLstmsAutoencoder(Model):
         self.nsample = nsample
         self._label_smoothing = label_smoothing
 
+        self.alpha = alpha
         self.kl_loss = None
     
     def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
@@ -77,7 +81,19 @@ class SrlLstmsAutoencoder(Model):
         # reconstruction (argument) loss (batch_size,)
         llh = self._likelihood(mask, logits, node_types, average = None) 
         
-        return llh
+        return -llh
+
+    def kld(self,
+            posteriors,
+            mask: torch.Tensor = None,
+            node_types: torch.Tensor = None,
+            embedded_nodes: torch.Tensor = None,  
+            embedded_edges: torch.Tensor = None,
+            contexts: torch.Tensor = None) -> torch.Tensor:
+        if isinstance(self.sampler, SamplerUniform):
+            return self.alpha * posteriors
+        else:
+            return self.alpha * posteriors
 
     def _likelihood(self,
                     mask: torch.Tensor,

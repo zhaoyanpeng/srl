@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_vae_d_hard_alpha.5_150_v20_rnd_sell"
+model_name="sri_vae_d_hard_alpha0.5_128_sp1_5.0"
 param_name="sri_vae_d_naive.jsonnet"
 model_path=$droot/model
 
