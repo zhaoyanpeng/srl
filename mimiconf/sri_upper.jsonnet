@@ -20,17 +20,17 @@
     "reader_mode": "basic",
     "validation_ontraining_data": false,
 
-    //"train_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
-    //"test_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/test.verb",
-    //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.verb",
+    "train_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
+    "test_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/test.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.verb",
 
     //"train_data_path": "/disk/scratch1/s1847450/data/conll09/CoNLL2009-ST-English/CoNLL2009-ST-English-train.txt",
     //"test_data_path": "/disk/scratch1/s1847450/data/conll09/CoNLL2009-ST-English/CoNLL2009-ST-evaluation-English.txt",
     //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/CoNLL2009-ST-English/CoNLL2009-ST-English-development.txt",
 
-    "train_data_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
-    "test_data_path": "/disk/scratch1/s1847450/data/conll09/separated/test.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb",
+    //"train_data_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
+    //"test_data_path": "/disk/scratch1/s1847450/data/conll09/separated/test.verb",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb",
 
     //"train_data_path": "/disk/scratch1/s1847450/data/conll09/separated/train.noun",
     //"test_data_path": "/disk/scratch1/s1847450/data/conll09/separated/test.noun",
@@ -40,7 +40,7 @@
     //"datasets_for_vocab_creation": ["vocab"],
 
     "model": {
-        "type": "srl_upper",
+        "type": "sri_upper",
         "classifier": {
             "type": "srl_vae_classifier",
             "token_embedder": {
@@ -98,14 +98,14 @@
         "batch_size": 128 
     },
     "trainer": {
-        "type": "srl_upper",
+        "type": "sri_upper",
         "num_epochs": 1000,
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 0,
+        "cuda_device": 2,
         "gen_loss_scalar": 1.0,
         "optimizer": {
             "type": "adadelta",

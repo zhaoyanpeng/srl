@@ -220,7 +220,7 @@ class VaeSrlTrainer(Trainer):
 
             self.optimizer.zero_grad()
 
-            loss, ce_loss, kl_loss, L, L_u, H, C = self.batch_loss(
+            loss, ce_loss, kl_loss, L, L_u, H, C, _ = self.batch_loss(
                                         noun_batch, 
                                         training=True, 
                                         retrive_crossentropy = True, 
@@ -446,7 +446,7 @@ class VaeSrlTrainer(Trainer):
         val_loss, batches_this_epoch = 0, 0
         for batch in val_generator_tqdm:
 
-            _, loss, _, _, _, _, _ = self.batch_loss(batch, training = False,
+            _, loss, _, _, _, _, _, _ = self.batch_loss(batch, training = False,
                                                 retrive_crossentropy = True, # implying gold labels exist
                                                 peep_prediction = True)
             if loss is not None:

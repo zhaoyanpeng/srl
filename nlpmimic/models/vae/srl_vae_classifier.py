@@ -26,12 +26,12 @@ class SrlVaeClassifier(Model):
     """ A srl classifier make predictions of p(y|x).
     """
     def __init__(self, vocab: Vocabulary,
-                 token_embedder: TextFieldEmbedder,
-                 lemma_embedder: TextFieldEmbedder,
-                 label_embedder: Embedding,
-                 predt_embedder: Embedding, # predt: predicate
-                 seq_encoder: Seq2SeqEncoder,
-                 psign_dim: int, # psign: predicate sign bit (0/1) 
+                 token_embedder: TextFieldEmbedder = None,
+                 lemma_embedder: TextFieldEmbedder = None,
+                 label_embedder: Embedding = None,
+                 predt_embedder: Embedding = None, # predt: predicate
+                 seq_encoder: Seq2SeqEncoder = None,
+                 psign_dim: int = None, # psign: predicate sign bit (0/1) 
                  tau: float = None,
                  tunable_tau: bool = False,
                  suppress_nonarg: bool = False,
