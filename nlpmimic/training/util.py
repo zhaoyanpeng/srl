@@ -72,24 +72,32 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
             train_dy_data = dataset_reader.read(train_dy_path)
 
         if reader_mode == NYT_READER_MODE:
-            train_dy_context_path = params.pop('train_dy_context_path') 
-            train_dy_appendix_path = params.pop('train_dy_appendix_path')
+            train_dy_context_path = params.pop('train_dy_context_path', None) 
+            train_dy_appendix_path = params.pop('train_dy_appendix_path', None)
             logger.info("Reading training (nytimes.context ) data of domain y from %s", train_dy_context_path)
             logger.info("Reading training (nytimes.appendix) data of domain y from %s", train_dy_appendix_path)
 
             train_dy_firstk = params.pop('train_dy_firstk', sys.maxsize)
             train_dx_firstk = params.pop('train_dx_firstk', sys.maxsize)
-            
-            nytimes_reader = DatasetReader.from_params(params.pop('nytimes_reader'))
-            train_dy_nyt_data = nytimes_reader._read(train_dy_context_path, 
-                                                     train_dy_appendix_path, 
-                                                     appendix_type='nyt_learn',
-                                                     firstk = train_dy_firstk)
-            train_dy_nyt_data = ensure_list(train_dy_nyt_data)
-            train_dy_data += train_dy_nyt_data # combine nytimes with gold
-            
+
             add_unlabeled_noun = params.get('add_unlabeled_noun', False) 
             using_labeled_noun = params.pop('using_labeled_noun', True) 
+            using_labeled_verb = params.pop('using_labeled_verb', True) 
+            
+            nytimes_reader = DatasetReader.from_params(params.pop('nytimes_reader'))
+            if train_dy_context_path is None \
+                or train_dy_appendix_path is None \
+                or train_dy_firstk == 0:
+                train_dy_nyt_data = [] # allow empty nyt dy
+            else:
+                appendix_type = 'nyt_learn' if using_labeled_verb else 'nyt_infer'
+                train_dy_nyt_data = nytimes_reader._read(train_dy_context_path, 
+                                                         train_dy_appendix_path, 
+                                                         appendix_type=appendix_type,
+                                                         firstk = train_dy_firstk)
+                train_dy_nyt_data = ensure_list(train_dy_nyt_data)
+            train_dy_data += train_dy_nyt_data # combine nytimes with gold
+            
             if add_unlabeled_noun:
                 train_dx_context_path = params.pop('train_dx_context_path', None)
                 train_dx_appendix_path = params.pop('train_dx_appendix_path')   

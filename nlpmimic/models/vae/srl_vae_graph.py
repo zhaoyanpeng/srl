@@ -23,6 +23,7 @@ class SrlGraphAutoencoder(Model):
                  encoder: Seq2VecEncoder, # a latent z
                  decoder: Seq2SeqEncoder, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder, # posterior distribution
+                 alpha: float = 0.5,      # kl weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -35,6 +36,7 @@ class SrlGraphAutoencoder(Model):
         self.nsample = nsample
         self._label_smoothing = label_smoothing
 
+        self.alpha = alpha
         self.kl_loss = None
     
     def add_parameters(self, nlabel: int, nlemma: int):
@@ -77,7 +79,7 @@ class SrlGraphAutoencoder(Model):
         # average along sample dimension
         self.likelihood = torch.mean(llh.view([self.nsample, batch_size]), 0) 
 
-        elbo = -self.likelihood - self.kldistance
+        elbo = -self.likelihood - self.alpha * self.kldistance
         return elbo  
     
     def _likelihood(self,
