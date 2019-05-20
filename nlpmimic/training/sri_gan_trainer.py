@@ -187,7 +187,7 @@ class GanSrlTrainer(Trainer):
                                     relying_on_generator = False, 
                                     caching_feature_only = True,
                                     retrive_crossentropy = False,
-                                    peep_prediction=peep)
+                                    peep_prediction=False)
 
         gen_loss, ce_loss, kl_loss, bp_loss, _ = self.batch_loss(
                                 fake, training = True, 
