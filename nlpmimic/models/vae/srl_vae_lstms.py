@@ -76,7 +76,7 @@ class SrlLstmsAutoencoder(Model):
         # (batch_size, dim)
         embedded_predicates = embedded_nodes[:, 0, :]
 
-        logits = self.decoder(embedded_edges, embedded_predicates)
+        logits = self.decoder(None, embedded_edges, embedded_predicates)
         
         # reconstruction (argument) loss (batch_size,)
         llh = self._likelihood(mask, logits, node_types, average = None) 

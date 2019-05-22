@@ -34,9 +34,11 @@ class SrlGraphAutoencoder(Model):
         self.alpha = alpha
         self.kl_loss = None
     
-    def add_parameters(self, nlabel: int, nlemma: int):
-        self.encoder.add_parameters(nlabel)
-        self.decoder.add_parameters(nlemma)
+    def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
+        if self.encoder is not None:
+            self.encoder.add_parameters(nlabel)
+        if self.decoder is not None:
+            self.decoder.add_parameters(nlemma, lemma_embedder_weight)
 
     def forward(self, 
                 mask: torch.Tensor,

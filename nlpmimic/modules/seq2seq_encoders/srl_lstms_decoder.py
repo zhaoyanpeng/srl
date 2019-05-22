@@ -35,6 +35,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
             raise ConfigurationError('Invalid rnn cell type.')
         
         self._dense_layers = []
+        input_dim = hidden_dim # output of rnn
         if dense_layer_dims is not None:
             for i_layer, dim in enumerate(self._dense_layer_dims):
                 dense_layer = torch.nn.Linear(input_dim, dim, bias=True)
@@ -55,19 +56,45 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
         setattr(self, 'label_projection_layer', label_layer)
 
     def forward(self, 
+                z: torch.Tensor,
                 embedded_labels: torch.Tensor,
                 embedded_predicates: torch.Tensor) -> torch.Tensor:
         batch_size, ntimestep, _ = embedded_labels.size()
 
+        if z is not None: # (batch_size, nsample, dim)
+            _, nsample, z_dim = z.size()
+            _, nnode, label_dim = embedded_labels.size()
+            predicate_dim = embedded_predicates.size(-1)
+            
+            embedded_predicates = embedded_predicates.expand(-1, nsample, -1).transpose(0, 1)
+            embedded_predicates = embedded_predicates.contiguous().view([-1, predicate_dim])
+
+            z = z.transpose(0, 1).contiguous().view([-1, z_dim]) # (nsample * batch_size, dim)
+            
+            embedded_labels = embedded_labels.unsqueeze(0).expand(nsample, -1, -1, -1)
+            embedded_labels = embedded_labels.contiguous().view([-1, nnode, label_dim])
+            
+            if self._hidden_dim < z_dim:
+                raise ConfigurationError('Dim of the latent semantics is too large for RNN hidden states.')
+
+            new_batch_size = z.size(0) # nsample * batch_size
+
+            n_z_dim = self._hidden_dim // z_dim
+            n_zeros = self._hidden_dim % z_dim
+            hx_z = [z for _ in range(n_z_dim)]
+            hx_zero = [torch.zeros((new_batch_size, n_zeros), device=embedded_labels.device)]
+            hx = torch.cat(hx_z + hx_zero, -1) # initial hidden states 
+        else:
+            hx = torch.zeros((batch_size, self._hidden_dim), device=embedded_labels.device)
+
         logits = []
-        hx = torch.zeros((batch_size, self._hidden_dim), device=embedded_labels.device)
         embedded_args = embedded_predicates # predicates and labels will be concatenated together
         for i in range(ntimestep):
             input_i = torch.cat([embedded_args, embedded_labels[:, i, :]], -1) 
             hx = self._rnn(input_i, hx) 
             embedded_args, logits_i = self.customize_hidden_states(hx)
             logits.append(logits_i)
-        logits = torch.stack(logits, 1)
+        logits = torch.stack(logits, 1) # (batch_size, nnode, nlemma)
 
         return logits 
    

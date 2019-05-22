@@ -34,18 +34,39 @@
 
     "model": {
         "autoencoder": {
-            "type": "srl_lstms_ae",
-            "alpha": 0.0,
+            "type": "srl_graph_ae",
+            "nsample": 2,
+            "alpha": 0.5,
+            "b_ctx_predicate": true,
+            "encoder": {
+                "type": "srl_graph_encoder",
+                "input_dim": 100, 
+                "layer_timesteps": [2, 2, 2, 2],
+                "residual_connection_layers": {"2": [0], "3": [0, 1]},
+                "dense_layer_dims": [100],
+                "node_msg_dropout": 0.3,
+                "residual_dropout": 0.3,
+                "aggregation_type": "a",
+                "combined_vectors": false,
+            },
             "decoder": {
                 "type": "srl_lstms_decoder",
-                "input_dim": 200,  // predicate + label,
-                "hidden_dim": 300, //  
+                "input_dim": 200, // predicate + label,
+                "hidden_dim": 300, // 100 * 3 + 0  
                 "dense_layer_dims": [450, 600],
                 "dropout": 0.1,
             },
+            //"decoder": {
+            //    "type": "srl_graph_decoder",
+            //    "input_dim": 300, // z + predicate + label,
+            //    "dense_layer_dims": [450, 600],
+            //    "dropout": 0.1,
+            //},
             "sampler": {
-                "type": "uniform",
-            }
+                "type": "gaussian",
+                "input_dim": 100, 
+                "output_dim": 100,  
+            },
         },
         "classifier": {
             "type": "srl_vae_classifier",
@@ -99,9 +120,10 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_d",
-        "nsampling": 1,
+        "type": "srl_vae",
+        "nsampling": 10,
         "alpha": 0.5,
+        "reweight": true, 
         "straight_through": true,
     },
     "iterator": {
@@ -117,11 +139,11 @@
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 0,
+        "cuda_device": 3,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,
-        "shuffle_arguments": false,
+        "shuffle_arguments": true,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

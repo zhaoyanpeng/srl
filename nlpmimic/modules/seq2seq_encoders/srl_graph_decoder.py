@@ -1,22 +1,7 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
-from typing import Set, Dict, List, TextIO, Optional, Any
-import numpy as np
+from typing import List 
 import torch
-import torch.nn.functional as F
 
-from allennlp.data import Vocabulary
-from allennlp.models.model import Model
 from allennlp.modules import Seq2SeqEncoder
-from allennlp.modules.token_embedders import Embedding
-from allennlp.common.checks import ConfigurationError
-from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed, TextFieldEmbedder
-from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_decode
-
 
 @Seq2SeqEncoder.register("srl_graph_decoder")
 class SrlGraphDecoder(Seq2SeqEncoder):
@@ -40,8 +25,10 @@ class SrlGraphDecoder(Seq2SeqEncoder):
         
         self._dropout = torch.nn.Dropout(dropout)
     
-    def add_parameters(self, output_dim: int) -> None:
+    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor) -> None:
         self._output_dim = output_dim 
+        self._lemma_embedder_weight = lemma_embedder_weight 
+
         label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
         setattr(self, 'label_projection_layer', label_layer)
 

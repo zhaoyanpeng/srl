@@ -38,8 +38,12 @@ class VaeSemanticRoleLabeler(Model):
         self.nsampling = nsampling
         self.reweight = reweight
         self.straight_through = straight_through
+
+        # auto-regressive model of the decoder will need lemma weights 
+        lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
         self.autoencoder.add_parameters(self.classifier.nclass,
-                                        self.vocab.get_vocab_size("lemmas"))
+                                        self.vocab.get_vocab_size("lemmas"),
+                                        lemma_embedder.weight)
         self.tau = self.classifier.tau
         initializer(self)
     
