@@ -197,6 +197,8 @@ class SrlGraphEncoder(Seq2VecEncoder):
                         embedded_nodes: torch.Tensor,
                         num_nodes: int,
                         node_mask: torch.Tensor) -> torch.Tensor:
+        # we may need the contextualized predicate vectors
+        self.embedded_predicates = embedded_nodes[:, [0], :]  
         embedded_arguments = embedded_nodes[:, 1:, :]
         if self._combined_vectors: # concatenate vectors of predicates and arguments
             embedded_predicate = embedded_nodes[:, [0], :]

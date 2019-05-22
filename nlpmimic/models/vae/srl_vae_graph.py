@@ -1,7 +1,3 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
 from typing import Tuple, Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
@@ -9,13 +5,10 @@ import torch.nn.functional as F
 
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
-from allennlp.modules import Seq2VecEncoder
 from allennlp.common.checks import ConfigurationError
+from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed, TextFieldEmbedder
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn.util import get_lengths_from_binary_sequence_mask, viterbi_decode
-
 
 @Model.register("srl_graph_ae")
 class SrlGraphAutoencoder(Model):
@@ -25,7 +18,8 @@ class SrlGraphAutoencoder(Model):
                  sampler: Seq2VecEncoder, # posterior distribution
                  alpha: float = 0.5,      # kl weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
-                 label_smoothing: float = None,
+                 label_smoothing: float = None, # 
+                 b_ctx_predicate: bool = False, # b: boolean value
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlGraphAutoencoder, self).__init__(vocab, regularizer)
         self.signature = 'graph'
@@ -35,6 +29,7 @@ class SrlGraphAutoencoder(Model):
         self.sampler = sampler
         self.nsample = nsample
         self._label_smoothing = label_smoothing
+        self._b_ctx_predicate = b_ctx_predicate
 
         self.alpha = alpha
         self.kl_loss = None
@@ -66,6 +61,8 @@ class SrlGraphAutoencoder(Model):
         
         # (nsample, batch_size, n_node, n_lemma)
         embedded_predicates = embedded_nodes[:, [0], :]
+        if self._b_ctx_predicate:
+            embedded_predicates = self.encoder.embedded_predicates
         logits = self.decoder(z, embedded_edges, embedded_predicates)
 
         # reconstruction loss

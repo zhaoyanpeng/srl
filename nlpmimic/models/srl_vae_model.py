@@ -24,6 +24,7 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 reweight: bool = True,
                  straight_through: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -35,6 +36,7 @@ class VaeSemanticRoleLabeler(Model):
 
         self.alpha = alpha
         self.nsampling = nsampling
+        self.reweight = reweight
         self.straight_through = straight_through
         self.autoencoder.add_parameters(self.classifier.nclass,
                                         self.vocab.get_vocab_size("lemmas"))
@@ -122,7 +124,9 @@ class VaeSemanticRoleLabeler(Model):
             y_logs = torch.stack(y_logs, 0)
             y_ls = torch.stack(y_ls, 0)
             # along sample dimension
-            y_probs = torch.exp(y_logs).softmax(0)
+            y_probs = torch.exp(y_logs)
+            if self.reweight:
+                y_probs = y_probs.softmax(0)
             y_ls = y_ls * y_probs
             
             H = torch.log(y_probs + self.minimum_float) * y_probs

@@ -6,6 +6,8 @@
         "type":"conll2009",
         //"maximum_length": 80,
         //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
+        "lemma_file":  "/disk/scratch1/s1847450/data/conll09/all.moved.arg.vocab",
+        "lemma_use_firstk": 20,
         "feature_labels": ["pos", "dep"],
         "move_preposition_head": true,
         "max_num_argument": 7,
@@ -34,6 +36,8 @@
         "autoencoder": {
             "type": "srl_graph_ae",
             "nsample": 2,
+            "alpha": 0.5,
+            "b_ctx_predicate": true,
             "encoder": {
                 "type": "srl_graph_encoder",
                 "input_dim": 100, 
@@ -111,13 +115,14 @@
 
         "type": "srl_vae",
         "nsampling": 10,
-        "alpha": 0.2,
+        "alpha": 0.5,
+        "reweight": true, 
         "straight_through": true,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 64 
+        "batch_size": 128 
     },
     "trainer": {
         "type": "sri_vae",
@@ -127,7 +132,7 @@
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 3,
+        "cuda_device": 1,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,

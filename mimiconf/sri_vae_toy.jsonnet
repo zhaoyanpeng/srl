@@ -18,10 +18,9 @@
 
     "model": {
         "autoencoder": {
-            //"type": "srl_graph_ae",
-            //"type": "srl_basic_ae",
-            "type": "srl_lemma_ae",
+            "type": "srl_graph_ae",
             "nsample": 2,
+            "b_ctx_predicate": true,
             "encoder": {
                 "type": "srl_graph_encoder",
                 "input_dim": 2, 
@@ -34,10 +33,10 @@
                 "combined_vectors": false,
             },
             "decoder": {
-                //"type": "srl_graph_decoder",
-                "type": "srl_basic_decoder",
-                //"input_dim": 7, // 3 + 2 + 2
-                "input_dim": 4, // 2 + 2
+                "type": "srl_graph_decoder",
+                //"type": "srl_basic_decoder",
+                "input_dim": 7, // 3 + 2 + 2
+                //"input_dim": 4, // 2 + 2
                 "dense_layer_dims": [5, 5],
             },
             "sampler": {
@@ -97,7 +96,7 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_lemma",
+        "type": "srl_vae",
         "alpha": 0.5,
         "nsampling": 2,
         "straight_through": true,
@@ -109,7 +108,7 @@
         "batch_size": 3 
     },
     "trainer": {
-        "type": "sri_vae_lemma",
+        "type": "sri_vae",
         "num_epochs": 1,
         "grad_clipping": 1.0,
         "patience": 20,
