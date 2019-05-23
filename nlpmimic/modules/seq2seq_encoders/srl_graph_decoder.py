@@ -27,7 +27,7 @@ class SrlGraphDecoder(Seq2SeqEncoder):
     
     def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor) -> None:
         self._output_dim = output_dim 
-        self._lemma_embedder_weight = lemma_embedder_weight 
+        #self._lemma_embedder_weight = lemma_embedder_weight 
 
         label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
         setattr(self, 'label_projection_layer', label_layer)
