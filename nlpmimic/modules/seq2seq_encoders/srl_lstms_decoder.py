@@ -13,6 +13,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
     def __init__(self, 
                  input_dim: int, 
                  hidden_dim: int = None,
+                 b_ignore_z: bool = False, # b: bool
                  rnn_cell_type: str = 'gru',
                  straight_through: bool = True,
                  dense_layer_dims: List[int] = None,
@@ -22,6 +23,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
 
         self._input_dim = input_dim 
         self._hidden_dim = hidden_dim
+        self._b_ignore_z = b_ignore_z
         self._dense_layer_dims = dense_layer_dims 
         self._straight_through = straight_through
         
@@ -61,7 +63,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
                 embedded_predicates: torch.Tensor) -> torch.Tensor:
         batch_size, ntimestep, _ = embedded_labels.size()
 
-        if z is not None: # (batch_size, nsample, dim)
+        if not self._b_ignore_z and z is not None: # (batch_size, nsample, dim)
             _, nsample, z_dim = z.size()
             _, nnode, label_dim = embedded_labels.size()
             predicate_dim = embedded_predicates.size(-1)
@@ -86,6 +88,8 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
             hx = torch.cat(hx_z + hx_zero, -1) # initial hidden states 
         else:
             hx = torch.zeros((batch_size, self._hidden_dim), device=embedded_labels.device)
+            if embedded_predicates.dim() == 3:
+                embedded_predicates = embedded_predicates.squeeze(1)
 
         logits = []
         embedded_args = embedded_predicates # predicates and labels will be concatenated together

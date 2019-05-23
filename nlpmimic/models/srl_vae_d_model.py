@@ -14,6 +14,7 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 reweight: bool = True,
                  straight_through: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -25,6 +26,7 @@ class VaeSemanticRoleLabeler(Model):
 
         self.alpha = alpha
         self.nsampling = nsampling
+        self.reweight = reweight
         self.straight_through = straight_through
 
         # auto-regressive model of the decoder will need lemma weights 
@@ -87,7 +89,7 @@ class VaeSemanticRoleLabeler(Model):
             # used in decoding
             encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
 
-            L = self.autoencoder.decode(argument_mask, arg_lemmas, embedded_nodes, encoded_labels)
+            L = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, encoded_labels)
 
             L, C = -torch.mean(L), torch.mean(C) 
 
@@ -95,55 +97,55 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['C'] = C 
             output_dict['loss'] = L + self.alpha * C 
         else: ### unlabled halve
-            # gumbel relaxation for unlabeled halve
-            """
-            gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
-                self.classifier.gumbel_relax(argument_mask, arg_logits)
-            # used in decoding
-            labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
-            encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
-            
-            L_y = self.autoencoder.decode(argument_mask, arg_lemmas, embedded_nodes, encoded_labels)
-            
-            L_y = -torch.mean(L_y)
-            output_dict['L_u'] = L_y
-            output_dict['loss'] = L_y
-            """ 
-            y_logs, y_ls = [], []
+            y_logs, y_ls, y_lprobs = [], [], []
             for _ in range(self.nsampling):
                 gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
                     self.classifier.gumbel_relax(argument_mask, arg_logits)
                 # used in decoding
                 labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
                 encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
-                
-                # reconstruction loss
-                L_y = self.autoencoder.decode(argument_mask, arg_lemmas, embedded_nodes, encoded_labels)
+
+                L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
+                    encoded_labels, edge_type_onehots = labels_relaxed)
                 
                 # log posteriors
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
                 hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
                 y_log = torch.sum(hard_lprobs, -1) # posteriors
 
+                y_lprobs.append(y_log)
+
                 # kl term, we may use a pretrained decoder to compute priors of y
+                # TODO currently it is the same as entropy
                 y_log = self.autoencoder.kld(y_log, argument_mask, arg_lemmas, embedded_nodes, encoded_labels)
 
                 y_logs.append(y_log)
                 y_ls.append(L_y)
 
-            # samples    
+            # samples (nsample, batch_size) 
+            y_lprobs = torch.stack(y_lprobs, 0)
             y_logs = torch.stack(y_logs, 0)
             y_ls = torch.stack(y_ls, 0)
 
-            # along sample dimension
-            y_logs = torch.mean(y_logs, 0)
-            y_ls = torch.mean(y_ls, 0)
+            if self.reweight:
+                y_probs = torch.exp(y_lprobs)
+                y_probs = y_probs.softmax(0)
+                
+                y_logs = y_logs * y_probs
+                y_logs = y_logs.sum(0)
+
+                y_ls = y_ls * y_probs
+                y_ls = y_ls.sum(0)
+            else:
+                # along sample dimension
+                y_logs = torch.mean(y_logs, 0)
+                y_ls = torch.mean(y_ls, 0)
             
             # along batch dimension
             KL = torch.mean(y_logs) 
             L_u = -torch.mean(y_ls)
 
-            output_dict['KL'] = KL 
+            output_dict['KL'] = -KL 
             output_dict['L_u'] = L_u
             output_dict['loss'] = L_u + KL
 

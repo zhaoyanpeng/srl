@@ -14,12 +14,14 @@ from nlpmimic.modules.seq2vec_encoders.sampler import SamplerUniform
 @Model.register("srl_lstms_ae")
 class SrlLstmsAutoencoder(Model):
     def __init__(self, vocab: Vocabulary,
-                 encoder: Seq2SeqEncoder = None, # a latent z
+                 encoder: Seq2VecEncoder = None, # a latent z
                  decoder: Seq2SeqEncoder = None, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder = None, # posterior distribution
                  alpha: float = 0.5,      # kl weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None,
+                 b_use_z: bool = True,
+                 b_ctx_predicate: bool = False, # b: boolean value
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlLstmsAutoencoder, self).__init__(vocab, regularizer)
         self.signature = 'srl_lstms_ae'
@@ -29,9 +31,13 @@ class SrlLstmsAutoencoder(Model):
         self.sampler = sampler
         self.nsample = nsample
         self._label_smoothing = label_smoothing
-
+        self._b_ctx_predicate = b_ctx_predicate
+        self._b_use_z = b_use_z
+        
         self.alpha = alpha
-        self.kl_loss = None
+
+        self.kldistance = None 
+        self.likelihood = None 
     
     def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
         if self.encoder is not None:
@@ -47,41 +53,20 @@ class SrlLstmsAutoencoder(Model):
                 embedded_edges: torch.Tensor,
                 edge_type_onehots: torch.Tensor = None,
                 contexts: torch.Tensor = None) -> torch.Tensor:
-        ### discarded, call 'encode' and 'decode' instead
-        self.kldistance = None 
-        self.likelihood = None 
-        return None 
-    
-    def encode(self, 
-               mask: torch.Tensor,
-               edge_types: torch.Tensor,
-               embedded_nodes: torch.Tensor,
-               embedded_edges: torch.Tensor):
-        # to infer semantic role labels with multiple choices
+        # encoding them if it is needed
+        if self._b_use_z or self._b_ctx_predicate:
+            z = self.encoder(mask, embedded_nodes, edge_types, edge_type_onehots)
+            z = z.unsqueeze(1)
+        embedded_predicates = embedded_nodes[:, [0], :]
+        if self._b_ctx_predicate:
+            embedded_predicates = self.encoder.embedded_predicates
+        if not self._b_use_z:
+            z = None
 
-        ## independent model
-        if self.encoder.signature == 'srl_basic_decoder':
-            pass
-
-        ## selectional preference model
-        if self.encoder.signature == 'srl_lstms_decoder':
-            pass
-        pass
-
-    def decode(self,
-               mask: torch.Tensor,
-               node_types: torch.Tensor,
-               embedded_nodes: torch.Tensor,
-               embedded_edges: torch.Tensor):
-        # (batch_size, dim)
-        embedded_predicates = embedded_nodes[:, 0, :]
-
-        logits = self.decoder(None, embedded_edges, embedded_predicates)
-        
         # reconstruction (argument) loss (batch_size,)
+        logits = self.decoder(z, embedded_edges, embedded_predicates)
         llh = self._likelihood(mask, logits, node_types, average = None) 
-        
-        return -llh
+        return -llh 
 
     def kld(self,
             posteriors,

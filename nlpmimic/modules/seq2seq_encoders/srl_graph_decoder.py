@@ -35,21 +35,29 @@ class SrlGraphDecoder(Seq2SeqEncoder):
     def forward(self, 
                 z: torch.Tensor,
                 embedded_edges: torch.Tensor,
-                embedded_predicates: torch.Tensor = None) -> torch.Tensor:
-        nsample = z.size(1) 
+                embedded_predicates: torch.Tensor) -> torch.Tensor:
         nnode = embedded_edges.size(1)
+        embedded_nodes = []
 
-        # (nsample, batch_size, nnode, dim)
-        z = z.transpose(0, 1).unsqueeze(2).expand(-1, -1, nnode, -1) 
+        if z is not None:
+            nsample = z.size(1) 
+            # (nsample, batch_size, nnode, dim)
+            z = z.transpose(0, 1).unsqueeze(2).expand(-1, -1, nnode, -1) 
+            embedded_nodes.append(z)
+        else:
+            nsample = 1
+
         embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
-        embedded_nodes = torch.cat([z, embedded_edges], -1)
-        if embedded_predicates is not None:
-            embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
-            embedded_nodes = torch.cat([embedded_nodes, embedded_predicates], -1)
+        embedded_nodes.append(embedded_edges)
 
+        if embedded_predicates is not None: # must not be None
+            embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
+            embedded_nodes.append(embedded_predicates)
+
+        embedded_nodes = torch.cat(embedded_nodes, -1)
         embedded_nodes = self.multi_dense(embedded_nodes)
+
         logits = self.label_projection_layer(embedded_nodes)
-        
         return logits 
     
     def multi_dense(self, embedded_nodes: torch.Tensor) -> torch.Tensor:

@@ -21,6 +21,19 @@
             "type": "srl_lstms_ae",
             //"type": "srl_basic_ae",
             "alpha": 0.5,
+            "b_use_z": true,
+            "b_ctx_predicate": true,
+            "encoder": {
+                "type": "srl_graph_encoder",
+                "input_dim": 2, 
+                "layer_timesteps": [2, 2, 2, 2],
+                "residual_connection_layers": {"2": [0], "3": [0, 1]},
+                "dense_layer_dims": [2],
+                "node_msg_dropout": 0.3,
+                "residual_dropout": 0.3,
+                "aggregation_type": "a",
+                "combined_vectors": false,
+            },
             "decoder": {
                 "type": "srl_lstms_decoder",
                 //"type": "srl_basic_decoder",
@@ -87,6 +100,7 @@
         //"type": "srl_vae_y",
         "alpha": 0.5,
         "nsampling": 2,
+        "reweight": true, 
         "straight_through": true,
 
     },

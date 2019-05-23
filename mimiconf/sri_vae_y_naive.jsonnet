@@ -22,9 +22,9 @@
     "reader_mode": "srl_gan",
     "validation_ontraining_data": false,
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.noun",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/train.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/sell/devel.noun",
+    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
+    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
 
     //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     //"datasets_for_vocab_creation": ["vocab"],
@@ -34,11 +34,24 @@
 
     "model": {
         "autoencoder": {
-            "type": "srl_basic_ae",
+            "type": "srl_lstms_ae",
             "alpha": 0.5,
+            "b_use_z": true,
+            "b_ctx_predicate": true,
+            "encoder": {
+                "type": "srl_graph_encoder",
+                "input_dim": 100, 
+                "layer_timesteps": [2, 2, 2, 2],
+                "residual_connection_layers": {"2": [0], "3": [0, 1]},
+                "dense_layer_dims": [100],
+                "node_msg_dropout": 0.3,
+                "residual_dropout": 0.3,
+                "aggregation_type": "a",
+                "combined_vectors": false,
+            },
             "decoder": {
-                "type": "srl_basic_decoder",
-                "input_dim": 200, // predicate + label,
+                "type": "srl_graph_decoder",
+                "input_dim": 300, // z + predicate + label,
                 "dense_layer_dims": [450, 600],
                 "dropout": 0.1,
             },
@@ -98,15 +111,16 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_y",
+        "type": "srl_vae_d",
         "nsampling": 10,
         "alpha": 0.5,
+        "reweight": true, 
         "straight_through": true,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 150 
+        "batch_size": 128 
     },
     "trainer": {
         "type": "sri_vae",
@@ -120,6 +134,7 @@
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,
+        "shuffle_arguments": false,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95
