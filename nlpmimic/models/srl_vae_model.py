@@ -115,7 +115,8 @@ class VaeSemanticRoleLabeler(Model):
                 labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
                 encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
                 
-                L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, encoded_labels)
+                L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
+                    encoded_labels, edge_type_onehots = labels_relaxed)
                 
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
                 hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
