@@ -36,8 +36,8 @@
         "autoencoder": {
             "type": "srl_lstms_ae",
             "alpha": 0.5,
-            "b_use_z": true,
-            "b_ctx_predicate": true,
+            "b_use_z": false,
+            "b_ctx_predicate": false,
             "encoder": {
                 "type": "srl_graph_encoder",
                 "input_dim": 100, 
@@ -51,7 +51,7 @@
             },
             "decoder": {
                 "type": "srl_graph_decoder",
-                "input_dim": 300, // z + predicate + label,
+                "input_dim": 200, // z + predicate + label,
                 "dense_layer_dims": [450, 600],
                 "dropout": 0.1,
             },
@@ -112,10 +112,12 @@
         },
 
         "type": "srl_vae_d",
-        "nsampling": 10,
+        "nsampling": 1,
         "alpha": 0.5,
         "reweight": true, 
         "straight_through": true,
+        "continuous_label": false,
+        "kl_prior": "null",
     },
     "iterator": {
         "type": "bucket",
@@ -128,9 +130,9 @@
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 3,
+        "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 0,
+        "cuda_device": 3,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,

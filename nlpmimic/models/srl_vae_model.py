@@ -26,6 +26,7 @@ class VaeSemanticRoleLabeler(Model):
                  nsampling: int = 10,
                  reweight: bool = True,
                  straight_through: bool = True,
+                 continuous_label: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(VaeSemanticRoleLabeler, self).__init__(vocab, regularizer)
@@ -38,6 +39,7 @@ class VaeSemanticRoleLabeler(Model):
         self.nsampling = nsampling
         self.reweight = reweight
         self.straight_through = straight_through
+        self.continuous_label = continuous_label
 
         # auto-regressive model of the decoder will need lemma weights 
         lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
@@ -115,8 +117,9 @@ class VaeSemanticRoleLabeler(Model):
                 labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
                 encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
                 
+                onehots = labels_relaxed if self.continuous_label else None
                 L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
-                    encoded_labels, edge_type_onehots = labels_relaxed)
+                    encoded_labels, edge_type_onehots = onehots)
                 
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
                 hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)

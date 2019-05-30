@@ -14,8 +14,10 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 kl_prior: str = None,
                  reweight: bool = True,
                  straight_through: bool = True,
+                 continuous_label: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(VaeSemanticRoleLabeler, self).__init__(vocab, regularizer)
@@ -26,8 +28,10 @@ class VaeSemanticRoleLabeler(Model):
 
         self.alpha = alpha
         self.nsampling = nsampling
+        self.kl_prior = kl_prior
         self.reweight = reweight
         self.straight_through = straight_through
+        self.continuous_label = continuous_label
 
         # auto-regressive model of the decoder will need lemma weights 
         lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
@@ -105,8 +109,9 @@ class VaeSemanticRoleLabeler(Model):
                 labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
                 encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
 
+                onehots = labels_relaxed if self.continuous_label else None
                 L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
-                    encoded_labels, edge_type_onehots = labels_relaxed)
+                    encoded_labels, edge_type_onehots = onehots)
                 
                 # log posteriors
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
@@ -117,8 +122,13 @@ class VaeSemanticRoleLabeler(Model):
 
                 # kl term, we may use a pretrained decoder to compute priors of y
                 # TODO currently it is the same as entropy
-                y_log = self.autoencoder.kld(y_log, argument_mask, arg_lemmas, embedded_nodes, encoded_labels)
-
+                onehots = gumbel_hard if self.kl_prior is not None else None
+                y_log = self.autoencoder.kld(y_log, 
+                                             mask = argument_mask, 
+                                             node_types = arg_lemmas, 
+                                             embedded_nodes = embedded_nodes, 
+                                             embedded_edges = encoded_labels, 
+                                             edge_type_onehots = onehots)
                 y_logs.append(y_log)
                 y_ls.append(L_y)
 

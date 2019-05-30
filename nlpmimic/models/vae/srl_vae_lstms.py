@@ -69,16 +69,35 @@ class SrlLstmsAutoencoder(Model):
         return -llh 
 
     def kld(self,
-            posteriors,
+            posteriors, # logrithm 
             mask: torch.Tensor = None,
             node_types: torch.Tensor = None,
             embedded_nodes: torch.Tensor = None,  
             embedded_edges: torch.Tensor = None,
+            edge_type_onehots: torch.Tensor = None,
             contexts: torch.Tensor = None) -> torch.Tensor:
         if isinstance(self.sampler, SamplerUniform):
-            return self.alpha * posteriors
+            if edge_type_onehots is not None:
+                label_onehots = edge_type_onehots * mask.unsqueeze(-1).float()
+                batch_probs = torch.sum(label_onehots, 1) # along argument dim
+                batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
+
+                # probabilities of samples & weighted loss
+                # probabilities = torch.exp(posteriors) # not do this here 
+                kl_loss = torch.log(batch_probs) * batch_probs  
+                kl_loss = torch.sum(kl_loss, 1) # along label dim
+
+                # either of the follows may not be necessary # not do this here
+                #kl_loss = kl_loss * probabilities
+                #kl_loss = torch.mean(kl_loss)
+
+                # loss on sentence level
+                kl_loss = self.alpha * kl_loss 
+            else:
+                kl_loss = self.alpha * posteriors
         else:
-            return self.alpha * posteriors
+            kl_loss = self.alpha * posteriors
+        return kl_loss 
 
     def _likelihood(self,
                     mask: torch.Tensor,
