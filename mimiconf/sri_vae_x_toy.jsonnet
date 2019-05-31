@@ -37,8 +37,9 @@
             "decoder": {
                 "type": "srl_lstms_decoder",
                 //"type": "srl_basic_decoder",
-                "input_dim": 4, //  2 + 2
+                "input_dim": 6, //  2 + 2
                 "hidden_dim": 3, 
+                "always_use_predt": true,
                 //"dense_layer_dims": [5, 5],
             },
             "sampler": {
@@ -102,6 +103,8 @@
         "nsampling": 2,
         "reweight": true, 
         "straight_through": true,
+        "continuous_label": false,
+        "kl_prior": "null",
 
     },
     "iterator": {

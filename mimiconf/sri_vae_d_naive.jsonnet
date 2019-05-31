@@ -22,9 +22,9 @@
     "reader_mode": "srl_gan",
     "validation_ontraining_data": false,
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
+    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/train.noun",
+    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/train.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/devel.noun",
 
     //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     //"datasets_for_vocab_creation": ["vocab"],
@@ -37,7 +37,7 @@
             "type": "srl_lstms_ae",
             "alpha": 0.0,
             "b_use_z": false,
-            "b_ctx_predicate": false,
+            "b_ctx_predicate": true,
             "encoder": {
                 "type": "srl_graph_encoder",
                 "input_dim": 100, 
@@ -51,8 +51,9 @@
             },
             "decoder": {
                 "type": "srl_lstms_decoder",
-                "input_dim": 200,  // predicate + label,
+                "input_dim": 300,  // predicate + label,
                 "hidden_dim": 300, //  
+                "always_use_predt": true,
                 "dense_layer_dims": [450, 600],
                 "dropout": 0.1,
             },
@@ -117,6 +118,8 @@
         "alpha": 0.5,
         "reweight": true, 
         "straight_through": true,
+        "continuous_label": false,
+        "kl_prior": null,
     },
     "iterator": {
         "type": "bucket",
@@ -129,9 +132,9 @@
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 3,
+        "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 1,
+        "cuda_device": 2,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,

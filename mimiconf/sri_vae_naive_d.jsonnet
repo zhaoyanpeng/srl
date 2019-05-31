@@ -22,9 +22,9 @@
     "reader_mode": "srl_gan",
     "validation_ontraining_data": false,
 
-    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.noun",
-    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/train.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/5.0/devel.noun",
+    "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/train.noun",
+    "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/train.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v100.0/devel.noun",
 
     //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     //"datasets_for_vocab_creation": ["vocab"],
@@ -36,7 +36,7 @@
         "autoencoder": {
             "type": "srl_graph_ae",
             "nsample": 2,
-            "alpha": 0.5,
+            "alpha": 0.0,
             "b_ctx_predicate": true,
             "encoder": {
                 "type": "srl_graph_encoder",
@@ -51,17 +51,13 @@
             },
             "decoder": {
                 "type": "srl_lstms_decoder",
-                "input_dim": 200, // predicate + label,
+                "input_dim": 300, // predicate + label,
                 "hidden_dim": 300, // 100 * 3 + 0  
+                "always_use_predt": true,
                 "dense_layer_dims": [450, 600],
+                "b_ignore_z": false,
                 "dropout": 0.1,
             },
-            //"decoder": {
-            //    "type": "srl_graph_decoder",
-            //    "input_dim": 300, // z + predicate + label,
-            //    "dense_layer_dims": [450, 600],
-            //    "dropout": 0.1,
-            //},
             "sampler": {
                 "type": "gaussian",
                 "input_dim": 100, 
@@ -125,6 +121,7 @@
         "alpha": 0.5,
         "reweight": true, 
         "straight_through": true,
+        "continuous_label": false,
     },
     "iterator": {
         "type": "bucket",
@@ -137,9 +134,9 @@
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 3,
+        "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 3,
+        "cuda_device": 0,
         "gen_skip_nepoch": 0,
         "gen_pretraining": -1, 
         "gen_loss_scalar": 1.0,
