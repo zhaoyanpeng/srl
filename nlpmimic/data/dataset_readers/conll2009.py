@@ -357,7 +357,6 @@ class Conll2009DatasetReader(DatasetReader):
                 self.lemma_set = lemma_set
         except Exception as e:
             logger.info("Reading vocabulary of lemmas failed: %s", lemma_file)
-            print('----------------fuck', e)
             self.lemma_set = None
     
     def filter_lemmas(self, lemmas: List[str]) -> List[str]:

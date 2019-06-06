@@ -1,7 +1,9 @@
 # pylint: disable=no-self-use,invalid-name
-import pytest, re
+import pytest, re, itertools, json
+
 from tqdm import tqdm
 from collections import Counter
+from collections import defaultdict 
 
 from allennlp.common.util import ensure_list
 from nlpmimic.common.testing import NlpMimicTestCase
@@ -49,6 +51,7 @@ class TestConll2009Reader():
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
     """
 
+    """
     @pytest.mark.parametrize("lazy", (False,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocabulary_file(self, lazy, move):
@@ -83,6 +86,7 @@ class TestConll2009Reader():
         
         print('\n|vocab of lemmas| is {}'.format(len(conll_reader.lemma_set)))
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
+    """
 
     """
     @pytest.mark.parametrize("lazy", (False,))
@@ -120,9 +124,50 @@ class TestConll2009Reader():
                     import sys
                     sys.exit(0)
                 arg_dict[lemma] += 1 
-    """
-    """ 
         with open(ofile, 'w') as fw:
             for k, v in arg_dict.most_common():
                 fw.write('{}\t{}\n'.format(k, v))
     """
+
+    @pytest.mark.parametrize("lazy", (False,))
+    @pytest.mark.parametrize("move", (True,))
+    def test_vocabulary_file(self, lazy, move):
+        droot = "/disk/scratch1/s1847450/data/conll09/separated/"
+        ofile = droot + 'all.predicate.vocab' 
+        conll_reader = Conll2009DatasetReader(lazy=lazy, 
+                                              feature_labels=['pos', 'dep'], 
+                                              move_preposition_head=move,
+                                              instance_type='srl_graph',
+                                              allow_null_predicate = False)
+
+        
+
+        #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
+        #ifile = droot + 'noun.bit'
+
+        ifile = droot + 'vocab.src'
+        instances = conll_reader.read(ifile)
+        instances = ensure_list(instances)
+
+        predicate_dict = defaultdict(dict) 
+
+        for instance in tqdm(instances):
+            predicate = instance['metadata']['predicate']
+            predicate_sense = instance['metadata']['predicate_sense']
+
+            if predicate not in predicate_dict:
+                predicate_dict[predicate] = Counter()
+            predicate_dict[predicate][predicate_sense] += 1
+        
+        print('|vocab of predicate| is {}'.format(len(predicate_dict)))
+        
+        freq_dict = Counter()
+        for k, v in predicate_dict.items():
+            freq_dict[k] += sum(v.values())
+        
+        with open(ofile, 'w') as fw:
+            for k, v in freq_dict.most_common():
+                data = (k, v, predicate_dict[k])
+                json.dump(data, fw)
+                fw.write('\n')
+
