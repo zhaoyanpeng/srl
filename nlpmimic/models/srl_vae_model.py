@@ -2,6 +2,7 @@ from typing import Dict, List, TextIO, Optional, Any
 
 from overrides import overrides
 import torch
+import numpy as np
 from torch.nn.modules import Linear, Dropout
 import torch.nn.functional as F
 
@@ -24,6 +25,7 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 kl_prior: str = None,
                  reweight: bool = True,
                  straight_through: bool = True,
                  continuous_label: bool = True,
@@ -37,6 +39,7 @@ class VaeSemanticRoleLabeler(Model):
 
         self.alpha = alpha
         self.nsampling = nsampling
+        self.kl_prior = kl_prior
         self.reweight = reweight
         self.straight_through = straight_through
         self.continuous_label = continuous_label
@@ -60,6 +63,7 @@ class VaeSemanticRoleLabeler(Model):
                 srl_frames: torch.LongTensor = None,
                 retrive_crossentropy: bool = False,
                 supervisely_training: bool = False, # deliberately added here
+                compute_mutual_infos: bool = False,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         pivot = 0 # either labeled or unlabeled data
         out_dict = self.classifier(tokens, predicate_indicators) 
@@ -68,6 +72,12 @@ class VaeSemanticRoleLabeler(Model):
 
         arg_logits, arg_labels, arg_lemmas = self.classifier.select_args(
             logits, srl_frames, lemmas['lemmas'], argument_indices) 
+
+        if compute_mutual_infos: # stopping criterion 
+            embedded_nodes = self.classifier.encode_args(
+                lemmas, predicates, predicate_indicators, argument_indices, embedded_seqs) 
+            return self.autoencoder.compute_mutual_info(
+                argument_mask, arg_lemmas, embedded_nodes, arg_labels, edge_type_onehots=None)
         
         # basic output stuff 
         output_dict = {"logits": logits[pivot:],
@@ -107,8 +117,10 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['L'] = L 
             output_dict['C'] = C 
             output_dict['loss'] = L + self.alpha * C 
+            output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
+            output_dict['KL'] = torch.mean(self.autoencoder.kldistance)
         else: ### unlabled halve
-            y_logs, y_ls = [], []
+            y_logs, y_ls, lls, kls = [], [], [], []
             for _ in range(self.nsampling):
                 # gumbel relaxation for unlabeled halve
                 gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
@@ -120,6 +132,8 @@ class VaeSemanticRoleLabeler(Model):
                 onehots = labels_relaxed if self.continuous_label else None
                 L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
                     encoded_labels, edge_type_onehots = onehots)
+                lls.append(self.autoencoder.likelihood)
+                kls.append(self.autoencoder.kldistance)
                 
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
                 hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
@@ -146,6 +160,14 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['L_u'] = L_u 
             output_dict['H'] = H 
             output_dict['loss'] = L_u + H 
+
+            lls = torch.stack(lls, 0)
+            kls = torch.stack(kls, 0)
+            if (kls < 0).any():
+                raise ValueError('KL should be non-negative.') 
+            output_dict['KL'] = torch.mean(kls) 
+            output_dict['LL'] = torch.mean(lls)
+
         return output_dict 
 
     @overrides

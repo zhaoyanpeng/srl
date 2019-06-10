@@ -360,7 +360,7 @@ def decode_metrics_vae(model, batch, training: bool,
                 retrive_crossentropy = retrive_crossentropy,
                 supervisely_training = supervisely_training)
     try:
-        loss = ce_loss = kl_loss = L = L_u = H = C = KL = None 
+        loss = ce_loss = kl_loss = L = L_u = H = C = LL = KL = None 
         if training: # compulsory loss
             loss = output_dict["loss"] # loss of the generator or discriminator
             if loss is not None:
@@ -379,6 +379,8 @@ def decode_metrics_vae(model, batch, training: bool,
                 H = output_dict['H']
             if 'C' in output_dict:
                 C = output_dict['C']
+            if 'LL' in output_dict:
+                LL = output_dict['LL']
             if 'KL' in output_dict:
                 KL = output_dict['KL']
         
@@ -393,8 +395,8 @@ def decode_metrics_vae(model, batch, training: bool,
         if training:
             raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"
                                "in the output of model.forward(inputs). output_dict: {}".format(output_dict))
-        loss = ce_loss = kl_loss = L = L_u = H = C = KL = None 
-    return loss, ce_loss, kl_loss, L, L_u, H, C, KL 
+        loss = ce_loss = kl_loss = L = L_u = H = C = LL = KL = None 
+    return loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL 
 
 def peep_predictions(output_dict: Dict[str, Any]):
     tokens = output_dict['tokens'][:5]
@@ -419,6 +421,7 @@ def get_metrics(model: Model,
                 L_u: float = None,
                 H: float = None,
                 C: float = None,
+                LL: float = None,
                 KL: float = None,
                 generator_loss: float = None,
                 discriminator_loss: float = None,
@@ -453,6 +456,8 @@ def get_metrics(model: Model,
         metrics['H'] = H
     if C is not None:
         metrics['C'] = C 
+    if LL is not None:
+        metrics['LL'] = LL
     if KL is not None:
         metrics['KL'] = KL 
 

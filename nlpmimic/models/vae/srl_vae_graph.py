@@ -19,6 +19,7 @@ class SrlGraphAutoencoder(Model):
                  alpha: float = 0.5,      # kl weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None, # 
+                 b_use_z: bool = True,
                  b_ctx_predicate: bool = False, # b: boolean value
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlGraphAutoencoder, self).__init__(vocab, regularizer)
@@ -30,6 +31,7 @@ class SrlGraphAutoencoder(Model):
         self.nsample = nsample
         self._label_smoothing = label_smoothing
         self._b_ctx_predicate = b_ctx_predicate
+        self._b_use_z = b_use_z
 
         self.alpha = alpha
         self.kl_loss = None
@@ -57,9 +59,11 @@ class SrlGraphAutoencoder(Model):
         z_mu, z_std = self.sampler.mu, self.sampler.std
         
         # KL(q(z|args, labels, predicates) || p(z))
-        kld = self._kldistance(z, (z_mu, z_std)) 
+        # kld = self._kldistance(z, (z_mu, z_std)) 
+        kld = self._kld_simple(z_mu, z_std) 
         # feature dimension, then sample dimension
-        self.kldistance = torch.mean(torch.sum(kld, -1), -1) 
+        kld = torch.mean(torch.sum(kld, -1), -1) 
+        self.kldistance = self.alpha * kld 
         
         # (nsample, batch_size, n_node, n_lemma)
         embedded_predicates = embedded_nodes[:, [0], :]
@@ -78,7 +82,7 @@ class SrlGraphAutoencoder(Model):
         # average along sample dimension
         self.likelihood = torch.mean(llh.view([self.nsample, batch_size]), 0) 
 
-        elbo = -self.likelihood - self.alpha * self.kldistance
+        elbo = -self.likelihood - self.kldistance
         return elbo  
     
     def _likelihood(self,
@@ -109,4 +113,90 @@ class SrlGraphAutoencoder(Model):
 
         kl = lq_z - lp_z
         return kl
+
+    def _kld_simple(self, mu, std):
+        var = torch.pow(std, 2) + 1e-15 # sanity check
+        return -0.5 * (torch.log(var) - var - torch.pow(mu, 2) + 1) 
+
+    def compute_mutual_info(self,
+                            mask: torch.Tensor,
+                            node_types: torch.Tensor,
+                            embedded_nodes: torch.Tensor,  
+                            edge_types: torch.Tensor,
+                            embedded_edges: torch.Tensor = None,
+                            edge_type_onehots: torch.Tensor = None,
+                            contexts: torch.Tensor = None) -> torch.Tensor:
+        batch_size, nnode = mask.size()
+        # encode graph into 'z'
+        z = self.encoder(mask, embedded_nodes, edge_types, edge_type_onehots)
+        # sample a 'z' (batch_size, nsample, dim)
+        z = self.sampler(z, nsample = self.nsample)
+        # parameters of the distribution from which 'z' is sampled
+        z_mu, z_std = self.sampler.mu, self.sampler.std
+        
+        """ 
+        ## 1st method 
+        print()
+        z_dim = z.size(-1)
+        var = torch.pow(z_std, 2) + 1e-15 
+        # https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Differential_entropy
+        # entropy = 0.5 * z_dim * (np.log(2 * np.pi) + 1) + 0.5 * torch.log(var).sum(-1)
+        entropy = 0.5 * z_dim * np.log(2 * np.pi) + 0.5 * (1 + torch.log(var)).sum(-1) 
+        # negative entropy; along z dim, then batch_size & nsample 
+        entropy = -torch.mean(entropy) 
+        
+        lq_z = self.sampler.lprob(z, z_mu, z_std)
+        lq_z = torch.sum(lq_z, -1) 
+        #print(lq_z, lq_z.size())
+
+        #lq_z = -0.5 * (z_dim * np.log(2 * np.pi) + torch.log(var).sum(-1)) \
+        #       -0.5 * (torch.pow(z - z_mu, 2) / var).sum(-1) 
+        #print(lq_z, lq_z.size())
+
+        # along z dim, then batch_size dim, then nsample
+        lq_z = torch.logsumexp(lq_z, 0) - np.log(batch_size) 
+        lq_z = torch.mean(lq_z)
+        
+        print("\n\n{} - {}\n\n".format(entropy, lq_z))
+        mi = entropy - lq_z
+        """
+        
+        ## Another method
+        print()
+        kl_0 = self._kld_simple(z_mu, z_std)
+        kl_0 = torch.mean(torch.sum(kl_0, -1))
+
+        lq_z = self.sampler.lprob(z, z_mu, z_std)
+        lp_z = self.sampler.lprob(z)
+
+        lq_z = torch.sum(lq_z, -1)
+        lp_z = torch.sum(lp_z, -1)
+        
+        lq_z = torch.logsumexp(lq_z, 0) - np.log(batch_size)
+        kl_1 = torch.mean(lq_z) - torch.mean(lp_z)
+
+        print(kl_1)
+
+        lp_z = torch.logsumexp(lp_z, 0) - np.log(batch_size)
+        kl_1 = torch.mean(lq_z - lp_z)
+        
+        print(kl_1)
+
+        #kl_1 = lq_z - lp_z
+        #kl_1 = torch.logsumexp(kl_1, 0) - np.log(batch_size)
+        #kl_1 = torch.mean(kl_1)
+        #print(kl_1)
+
+        mi = kl_0 - kl_1
+        
+        print("\n\n{} - {}\n\n".format(kl_0, kl_1))
+
+        #print(lq_z, lq_z.size())
+        #print(lp_z, lp_z.size())
+        print(mi)
+        
+        #import sys
+        #sys.exit(0)
+
+        return mi, batch_size
 

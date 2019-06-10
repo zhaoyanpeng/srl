@@ -53,6 +53,7 @@ class VaeSemanticRoleLabeler(Model):
                 srl_frames: torch.LongTensor = None,
                 retrive_crossentropy: bool = False,
                 supervisely_training: bool = False, # deliberately added here
+                compute_mutual_infos: bool = False,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         pivot = 0 # either labeled or unlabeled data
         out_dict = self.classifier(tokens, predicate_indicators) 
@@ -61,7 +62,7 @@ class VaeSemanticRoleLabeler(Model):
 
         arg_logits, arg_labels, arg_lemmas = self.classifier.select_args(
             logits, srl_frames, lemmas['lemmas'], argument_indices) 
-        
+
         # basic output stuff 
         output_dict = {"logits": logits[pivot:],
                        "logits_softmax": out_dict['logits_softmax'][pivot:],

@@ -27,7 +27,7 @@ from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-@TrainerBase.register("sri_vae")
+@TrainerBase.register("sri_aggressive")
 class VaeSrlTrainer(Trainer):
     def __init__(self,
                  model: Model,
@@ -59,11 +59,13 @@ class VaeSrlTrainer(Trainer):
                  feature_matching: bool = False,
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
+                 aggressive_vae: bool = False,
                  sort_by_length: bool = False,
                  shuffle_arguments: bool = False,
                  consecutive_update: bool = False,
-                 dis_max_nbatch: int = 0,
-                 gen_max_nbatch: int = 0,
+                 dis_max_nbatch: int = -1,
+                 dis_min_nbatch: int = -1,
+                 gen_max_nbatch: int = -1,
                  serialization_dir: Optional[str] = None,
                  num_serialized_models_to_keep: int = 20,
                  keep_serialized_model_every_num_seconds: int = None,
@@ -138,10 +140,12 @@ class VaeSrlTrainer(Trainer):
         self.gen_skip_nepoch = gen_skip_nepoch
         self.gen_pretraining = gen_pretraining
         
+        self.aggressive_vae = aggressive_vae
         self.sort_by_length = sort_by_length
         
         self.consecutive_update = consecutive_update
         self.dis_max_nbatch = dis_max_nbatch
+        self.dis_min_nbatch = dis_min_nbatch
         self.gen_max_nbatch = gen_max_nbatch
         
         if self.train_dx_data is not None:
@@ -167,6 +171,79 @@ class VaeSrlTrainer(Trainer):
                                     supervisely_training = supervisely_training,
                                     peep_prediction = peep_prediction)
             return statistics 
+    
+    def _basic_vae(self, noun_batch, verb_batch, ibatch: int):
+        self.optimizer.zero_grad()
+        self.optimizer.zero_grad()
+
+        ### labeled data
+        loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
+                                    verb_batch, 
+                                    training=True, 
+                                    retrive_crossentropy = False, 
+                                    supervisely_training = True,
+                                    peep_prediction=False)
+
+        ### unlabeled data
+        loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
+                                    noun_batch, 
+                                    training=True, 
+                                    retrive_crossentropy = True, 
+                                    supervisely_training = False,
+                                    peep_prediction=False)
+
+        loss = loss_verb + loss_noun 
+
+        if ce_loss is not None:
+            ce_loss = ce_loss.item()
+        if kl_loss is not None:
+            loss += self.kld_loss_scalar * kl_loss
+            kl_loss = kl_loss.item()
+
+        loss.backward()
+
+        gen_batch_grad_norm = self.gradient(self.optimizer, True, ibatch)
+        dis_batch_grad_norm = self.gradient(self.optimizer_dis, False, ibatch)
+
+        return gen_batch_grad_norm, dis_batch_grad_norm, loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL
+
+    def _aggressive_vae(self, noun_batch, verb_batch, ibatch: int, optimize_inf: bool):
+        self.optimizer.zero_grad()
+        self.optimizer.zero_grad()
+
+        ### labeled data
+        loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
+                                    verb_batch, 
+                                    training=True, 
+                                    retrive_crossentropy = False, 
+                                    supervisely_training = True,
+                                    peep_prediction=False)
+
+        ### unlabeled data
+        loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
+                                    noun_batch, 
+                                    training=True, 
+                                    retrive_crossentropy = True, 
+                                    supervisely_training = False,
+                                    peep_prediction=False)
+
+        loss = loss_verb + loss_noun 
+
+        if ce_loss is not None:
+            ce_loss = ce_loss.item()
+        if kl_loss is not None:
+            loss += self.kld_loss_scalar * kl_loss
+            kl_loss = kl_loss.item()
+
+        loss.backward()
+        
+        dis_batch_grad_norm = gen_batch_grad_norm = None
+        if optimize_inf:
+            dis_batch_grad_norm = self.gradient(self.optimizer_dis, False, ibatch) 
+        else:
+            gen_batch_grad_norm = self.gradient(self.optimizer, True, ibatch)
+
+        return gen_batch_grad_norm, dis_batch_grad_norm, loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL
 
     def _train_epoch(self, epoch: int) -> Dict[str, float]:
         logger.info("Epoch %d/%d", epoch, self._num_epochs - 1)
@@ -202,6 +279,7 @@ class VaeSrlTrainer(Trainer):
             print('\n----------------------epoch {}: self.kld_loss_scalar is {}'.format(epoch, self.kld_loss_scalar))
 
         logger.info("Training")
+        niter, pre_loss = 0, None 
         train_generator_tqdm = Tqdm.tqdm(train_generator, total=num_training_batches)
         for noun_batch, batch_size in train_generator_tqdm:
             peep = False
@@ -217,38 +295,42 @@ class VaeSrlTrainer(Trainer):
             #print()
             #print(verb_batch['argument_indices'])
             #print(noun_batch['argument_indices'])
+            
+            if not self.aggressive_vae or niter >= self.dis_max_nbatch:
+                if niter == self.dis_max_nbatch:
+                    gen_batch_grad_norm, dis_batch_grad_norm, loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL = \
+                        self._aggressive_vae(noun_batch, verb_batch, batch_num_total, False)
+                    niter = 0
+                    logger.info('\n------------------------optimizing the generative model {}'.format(niter))
+                else:
+                    gen_batch_grad_norm, dis_batch_grad_norm, loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL = \
+                        self._basic_vae(noun_batch, verb_batch, batch_num_total)
+                    logger.info('\n------------------------optimizing the all models {}'.format(niter))
+            else: # aggressive vae: niter < self.dis_max_nbatch
+                niter += 1
+                gen_batch_grad_norm, dis_batch_grad_norm, loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL = \
+                    self._aggressive_vae(noun_batch, verb_batch, batch_num_total, True)
+                if pre_loss is None:
+                    pre_loss = loss
+                if niter % self.dis_min_nbatch == 0:
+                    if loss - pre_loss > 0: 
+                        niter = self.dis_max_nbatch # terminating symbol
+                    pre_loss = loss
+                logger.info('\n------------------------optimizing the inference model {}'.format(niter))
 
-            self.optimizer.zero_grad()
+            train_loss += loss
 
-            ### labeled data
-            loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
-                                        verb_batch, 
-                                        training=True, 
-                                        retrive_crossentropy = False, 
-                                        supervisely_training = True,
-                                        peep_prediction=False)
 
-            ### unlabeled data
-            loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
-                                        noun_batch, 
-                                        training=True, 
-                                        retrive_crossentropy = True, 
-                                        supervisely_training = False,
-                                        peep_prediction=False)
-
-            loss = loss_verb + loss_noun 
-
-            if ce_loss is not None:
-                ce_loss = ce_loss.item()
-            if kl_loss is not None:
-                loss += self.kld_loss_scalar * kl_loss
-                kl_loss = kl_loss.item()
-
-            loss.backward()
-
-            gen_batch_grad_norm = self.gradient(self.optimizer, True, batch_num_total)
-            train_loss += loss.item()
-
+            if C > 100:
+                for n, p in model.named_parameters(): 
+                    #self.dis_param_names
+                    #if n in param_signatures and p.grad is not None:
+                    if p.grad is not None:
+                        if (p.data > 1000).any():
+                            print(n)
+                import sys
+                sys.exit(0)
+                
 
             # Update the description with the latest metrics
             metrics = mimic_training_util.get_metrics(self.model, 
@@ -272,14 +354,12 @@ class VaeSrlTrainer(Trainer):
                                                                         gen_batch_grad_norm,
                                                                         self.parameter_names,
                                                                         model_signature = 'gen_')
-                """
                 self._tensorboard.log_parameter_and_gradient_statistics(self.model, 
                                                                         dis_batch_grad_norm,
                                                                         self.dis_param_names,
                                                                         model_signature = 'dis_')
-                """
                 self._tensorboard.log_learning_rates(self.model, self.optimizer)
-                # self._tensorboard.log_learning_rates(self.model, self.optimizer_dis)
+                self._tensorboard.log_learning_rates(self.model, self.optimizer_dis)
 
                 self._tensorboard.add_train_scalar("loss/loss_train", metrics["loss"])
                 if "ce_loss" in metrics:
@@ -302,8 +382,8 @@ class VaeSrlTrainer(Trainer):
             if self._model_save_interval is not None and (
                     time.time() - last_save_time > self._model_save_interval):
                 last_save_time = time.time()
-                self._save_checkpoint('{0}.{1}'.format(epoch, training_util.time_to_str(int(last_save_time))))
-
+                self._save_checkpoint('{0}.{1}'.format(epoch, training_util.time_to_str(int(last_save_time)))) 
+        
         metrics = training_util.get_metrics(self.model, train_loss, batches_this_epoch, reset=True)
         metrics['cpu_memory_MB'] = peak_cpu_usage
         for (gpu_num, memory) in gpu_usage:
@@ -335,11 +415,19 @@ class VaeSrlTrainer(Trainer):
         training_start_time = time.time()
         metrics: Dict[str, Any] = {}
         epochs_trained = 0
-        
+        previous_mi = 0
+
         for epoch in range(epoch_counter, self._num_epochs):
             epoch_start_time = time.time()
 
             train_metrics = self._train_epoch(epoch)
+
+            if self.aggressive_vae: # agressive vae
+                with torch.no_grad():
+                    mi = self._compute_mutual_info() 
+                logger.info('\n------------------------computing mutual infos {} vs {}'.format(previous_mi, mi))
+                #self.aggressive_vae = not (mi - previous_mi < 0)
+                previous_mi = mi
 
             # get peak of memory usage
             if 'cpu_memory_MB' in train_metrics:
@@ -443,6 +531,28 @@ class VaeSrlTrainer(Trainer):
                 this_epoch_val_metric = val_metrics[self._validation_metric]
                 self._metric_tracker.add_metric(this_epoch_val_metric)
         return {}
+    
+    def _compute_mutual_info(self):
+        logger.info("Computing stopping criterion")
+        if self._validation_iterator is not None:
+            val_iterator = self._validation_iterator
+        else:
+            val_iterator = self.iterator
+
+        val_generator = val_iterator(self._validation_data, num_epochs=1, shuffle=False)
+        num_validation_batches = val_iterator.get_num_batches(self._validation_data)
+        val_generator_tqdm = Tqdm.tqdm(val_generator, total=num_validation_batches)
+
+        self.model.eval()
+        mi_all, data_size = 0, 0
+        for batch in val_generator_tqdm:
+            batch = nn_util.move_to_device(batch, self._cuda_devices[0])
+            mi, batch_size = self.model(**batch, compute_mutual_infos=True)
+            mi_all += mi * batch_size 
+            data_size += batch_size
+        mi = mi_all / data_size
+        print('\n\n{} / {} = {}\n\n'.format(mi_all, data_size, mi))
+        return mi  
 
     def _validation_loss(self) -> Tuple[float, int]:
         logger.info("Validating")
@@ -571,9 +681,11 @@ class VaeSrlTrainer(Trainer):
 
         consecutive_update = params.pop("consecutive_update", False)
         dis_max_nbatch = params.pop("dis_max_nbatch", 1)
+        dis_min_nbatch = params.pop("dis_min_nbatch", 1)
         gen_max_nbatch = params.pop("gen_max_nbatch", 1)
 
         # process input data
+        aggressive_vae = params.pop("aggressive_vae", True)
         sort_by_length = params.pop("sort_by_length", False)
         shuffle_arguments = params.pop("shuffle_arguments", False)
         
@@ -672,10 +784,12 @@ class VaeSrlTrainer(Trainer):
                    feature_matching = feature_matching,
                    use_wgan = use_wgan,
                    clip_val = clip_val,
+                   aggressive_vae = aggressive_vae,
                    sort_by_length = sort_by_length,
                    shuffle_arguments = shuffle_arguments,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
+                   dis_min_nbatch = dis_min_nbatch,
                    gen_max_nbatch = gen_max_nbatch,
                    serialization_dir=serialization_dir,
                    cuda_device=cuda_device,
