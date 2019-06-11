@@ -118,6 +118,33 @@ class SrlVaeClassifier(Model):
             'logits_softmax': logits_softmax,
             'embedded_seqs': embedded_seqs}
         return output_dict  
+
+    def encode_patterns(self,
+                        tokens: Dict[str, torch.LongTensor],
+                        predicate_sign: torch.LongTensor, # 1 (is) or 0 (not) predicate position
+                        arg_mask: torch.Tensor,
+                        arg_indices: torch.LongTensor,
+                        lemma_embedder: TextFieldEmbedder = None,
+                        lemmas: Dict[str, torch.LongTensor] = None) -> Dict[str, torch.Tensor]:
+        arg_token_idx = self.vocab.get_token_index("NULL_TOKEN", namespace="tokens")
+        arg_lengths = get_lengths_from_binary_sequence_mask(arg_mask).data.tolist()
+
+        if 'tokens' in tokens:
+            all_tokens = tokens['tokens']
+            for i, length in enumerate(arg_lengths):
+                all_tokens[i].scatter_(0, arg_indices[i][:length], arg_token_idx)
+            #all_tokens = all_tokens.scatter(1, arg_indices, arg_token_idx)
+            tokens['tokens'] = all_tokens
+        elif 'elmo' in tokens:
+            all_tokens = tokens['elmo']
+            batch_size, _, dim = all_tokens.size()
+            for i, length in enumerate(arg_lengths):
+                this_arg_indices = arg_indices[i][:length].unsqueeze(-1).expand(-1, dim)
+                all_tokens[i].scatter_(0, this_arg_indices, 1)
+            tokens['elmo'] = all_tokens
+
+        output_dict = self.forward(tokens, predicate_sign, lemma_embedder, lemmas)
+        return output_dict
     
     def gumbel_relax(self, 
                      mask: torch.Tensor,

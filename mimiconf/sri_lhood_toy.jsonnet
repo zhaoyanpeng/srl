@@ -1,6 +1,6 @@
 {
     "vocabulary": {
-        "tokens_to_add": {"lemmas": ["NULL_LEMMA"]}
+        "tokens_to_add": {"lemmas": ["NULL_LEMMA"], "tokens": ["NULL_TOKEN"]}
     },
     "dataset_reader":{
         "type":"conll2009",
@@ -34,6 +34,16 @@
 
         "classifier": {
             "type": "srl_vae_classifier",
+            "token_embedder": {
+                "token_embedders": {
+                    "tokens": {
+                        "type": "embedding",
+                        "embedding_dim": 2,
+                        "vocab_namespace": "tokens",
+                        "trainable": true 
+                    }
+                }
+            },
             "label_embedder": {
                 "embedding_dim": 2,
                 "vocab_namespace": "srl_tags",
@@ -46,6 +56,14 @@
                 "trainable": true, 
                 "sparse": false 
             },
+            "seq_encoder": {
+                "type": "stacked_bidirectional_lstm",
+                "input_size": 4,
+                "hidden_size": 2,
+                "num_layers": 1,
+                "recurrent_dropout_probability": 0.0,
+                "use_highway": true
+            },
             "tau": 0.01,
             "tunable_tau": false,
             "psign_dim": 2,
@@ -54,9 +72,11 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_lhood",
+        //"type": "srl_vae_lhood",
+        "type": "srl_vae_facto",
         "alpha": 0.5,
         "nsampling": 2,
+        "coupled_loss": true,
         "straight_through": true,
     },
     "iterator": {
@@ -70,7 +90,8 @@
         "grad_clipping": 1.0,
         "patience": 20,
         "shuffle": false,
-        "validation_metric": "+f1-measure-overall",
+        //"validation_metric": "+f1-measure-overall",
+        "validation_metric": "-loss",
         "cuda_device": -1,
         "optimizer": {
             "type": "adadelta",
