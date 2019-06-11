@@ -62,9 +62,11 @@ class SrlVaeClassifier(Model):
             self.nclass = self.vocab.get_vocab_size("srl_tags")
         else: # FIXME: assumming non-argument label has id 0, should ensure this in the configuration file
             self.nclass = self.vocab.get_vocab_size("srl_tags") - 1
-        
-        self.label_projection_layer = TimeDistributed(
-            Linear(self.seq_encoder.get_output_dim(), self.nclass))
+
+        self.label_projection_layer = None
+        if self.seq_encoder is not None:
+            self.label_projection_layer = TimeDistributed(
+                Linear(self.seq_encoder.get_output_dim(), self.nclass))
         
         # feature space transformation
         self.seq_projection_dim = seq_projection_dim
@@ -163,6 +165,17 @@ class SrlVaeClassifier(Model):
             encoded_labels = None
         encoded_labels = self.embedding_dropout(encoded_labels)
         return encoded_labels
+
+    def encode_predt(self, predicates: torch.Tensor, predicate_sign: torch.LongTensor):
+        embedded_predicates = self.predt_embedder(predicates)
+        # (batch_size, length, dim) -> (batch_size, dim, length)
+        embedded_predicates = torch.transpose(embedded_predicates, 1, 2)
+        # (batch_size, length, 1)
+        psigns = torch.unsqueeze(predicate_sign.float(), -1) 
+        # (batch_size, dim, 1); select the predicate embedding
+        embedded_predicates = torch.bmm(embedded_predicates, psigns)
+        embedded_predicates = embedded_predicates.transpose(1, 2)
+        return embedded_predicates
 
     def encode_args(self,
                     lemmas: Dict[str, torch.LongTensor],
@@ -421,6 +434,118 @@ class SrlVaeClassifier(Model):
                 for iarg, idx in enumerate(constraints[isent]):
                     ilabel = max_likelihood_sequence[iarg] + 1
                     tag = self.vocab.get_token_from_index(ilabel, namespace="srl_tags")
+                    tags[idx] = tag
+            isent += 1
+
+            all_tags.append(tags)
+        returned_dict["srl_tags"] = all_tags
+
+        # gold srl labels
+        gold_srl = []
+        srl_frames = output_dict["gold_srl"]
+        srl_frames = [srl_frames[i].detach().cpu() for i in range(srl_frames.size(0))]
+        for srls in srl_frames:
+            # FIXME pay attention to this ... do not need to touch gold labels
+            tags = [self.vocab.get_token_from_index(x, namespace="srl_tags") for x in srls.tolist()]
+
+            gold_srl.append(tags)
+        returned_dict["gold_srl"] = gold_srl 
+        return returned_dict
+
+    def add_arg_outputs(self, 
+                    pivot: int,
+                    mask: torch.Tensor,
+                    logits: torch.Tensor,
+                    labels: torch.Tensor,
+                    output_dict: Dict[str, torch.Tensor], 
+                    arg_mask: torch.Tensor = None,
+                    all_labels: torch.Tensor = None,
+                    arg_indices: torch.Tensor = None,
+                    metadata: List[Dict[str, Any]] = None) -> None:
+        if labels is None: 
+            raise ConfigurationError("Prediction loss required but gold labels `labels` is None.")
+        
+        if not self.ignore_span_metric:
+            if not hasattr(self, 'arg_span_metric'):
+                self.arg_span_metric = DependencyBasedF1Measure(self.vocab, unlabeled_vals=True, tag_namespace="lemmas")
+            self.arg_span_metric.arg_metric(logits[pivot:], labels[pivot:], mask[pivot:])
+            
+        if self.suppress_nonarg: # for decoding
+            output_dict['arg_masks'] = arg_mask[pivot:]
+            output_dict['arg_idxes'] = arg_indices[pivot:] 
+
+        output_dict["gold_srl"] = all_labels[pivot:] # decoded in `decode` for the purpose of debugging
+        if metadata is not None: 
+            list_lemmas, list_tokens, list_pos_tags, list_head_ids, list_predicates, list_predicate_indexes = \
+                                zip(*[(x["lemmas"], x["tokens"], x["pos_tags"], x["head_ids"], \
+                                    x["predicate"], x["predicate_index"], ) for x in metadata])
+            output_dict["tokens"] = list(list_tokens)[pivot:]
+            output_dict["lemmas"] = list(list_lemmas)[pivot:]
+            output_dict["pos_tags"] = list(list_pos_tags)[pivot:]
+            output_dict["head_ids"] = list(list_head_ids)[pivot:]
+            output_dict["predicate"] = list(list_predicates)[pivot:]
+            output_dict["predicate_index"] = list(list_predicate_indexes)[pivot:]
+        return None
+
+    def decode_args(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        namespace = 'lemmas'
+        if 'logits' in output_dict:
+            all_predictions = output_dict['logits']
+        elif 'logits_softmax' in output_dict:
+            all_predictions = output_dict['logits_softmax']
+        else:
+            raise ConfigurationError("unavailable logits for decoding predictions")
+        sequence_lengths = get_lengths_from_binary_sequence_mask(output_dict["mask"]).data.tolist()
+        # discard useless stuff in the output dict 
+        returned_dict = {"lemmas": output_dict["tokens"], 
+                         "tokens": output_dict["lemmas"],
+                         "pos_tags": output_dict["pos_tags"],
+                         "head_ids": output_dict["head_ids"],
+                         "predicate": output_dict["predicate"],
+                         "predicate_index": output_dict["predicate_index"]}
+        batch_size = all_predictions.size(0)
+        if all_predictions.dim() == 3:
+            predictions_list = [all_predictions[i].detach().cpu() for i in range(batch_size)]
+        else:
+            predictions_list = [all_predictions]
+        all_tags = []
+
+        if self.suppress_nonarg:
+            arg_masks = output_dict["arg_masks"]
+            arg_idxes = output_dict["arg_idxes"]
+            
+            arg_masks = [arg_masks[i].detach().cpu().tolist() for i in range(batch_size)]
+            arg_idxes = [arg_idxes[i].detach().cpu().tolist() for i in range(batch_size)]
+            
+            constraints = []
+            for isent, masks in enumerate(arg_masks):
+                valid = []
+                for iword, mask in enumerate(masks):
+                    if mask == 1:
+                        valid.append(arg_idxes[isent][iword])    
+                    else:
+                        break
+                constraints.append(valid)
+        else:
+            constraints = [[] for _ in range(batch_size)]     
+            #print(constraints)
+        returned_dict["arg_idxes"] = constraints
+
+        #print(self.vocab._token_to_index['srl_tags'])
+        isent = 0
+        for predictions, length in zip(predictions_list, sequence_lengths):
+            scores, max_likelihood_sequence = torch.max(predictions[:length], 1) 
+            max_likelihood_sequence = max_likelihood_sequence.tolist() 
+            # FIXME pay attention to this ... 
+            if not self.suppress_nonarg:
+                tags = [self.vocab.get_token_from_index(x, namespace=namespace) for x in max_likelihood_sequence]
+            else:
+                ntoken = len(output_dict["tokens"][isent])
+                #tags = [self.vocab.get_token_from_index(0, namespace=namespace) for _ in range(ntoken)]
+                tags = ['O' for _ in range(ntoken)]
+                for iarg, idx in enumerate(constraints[isent]):
+                    ilabel = max_likelihood_sequence[iarg] 
+                    tag = self.vocab.get_token_from_index(ilabel, namespace=namespace)
                     tags[idx] = tag
             isent += 1
 

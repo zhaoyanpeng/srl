@@ -164,6 +164,89 @@ class DependencyBasedF1Measure(Metric):
         # output the last one
         #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
 
+    def arg_metric(self,
+                   predictions: torch.Tensor,
+                   gold_labels: torch.Tensor,
+                   mask: Optional[torch.Tensor] = None,
+                   prediction_map: Optional[torch.Tensor] = None):
+        if mask is None:
+            mask = torch.ones_like(gold_labels)
+
+        predictions, gold_labels, mask, prediction_map = self.unwrap_to_tensors(predictions,
+                                                                                gold_labels,
+                                                                                mask, prediction_map)
+
+        num_classes = predictions.size(-1)
+        if not self._unlabeled_vals and (gold_labels >= num_classes).any():
+            print(gold_labels)
+            raise ConfigurationError("A gold label passed to SpanBasedF1Measure contains an "
+                                     "id >= {}, the number of classes.".format(num_classes))
+
+        sequence_lengths = get_lengths_from_binary_sequence_mask(mask)
+        argmax_predictions = predictions.max(-1)[1]
+
+        if prediction_map is not None:
+            argmax_predictions = torch.gather(prediction_map, 1, argmax_predictions)
+            gold_labels = torch.gather(prediction_map, 1, gold_labels.long())
+
+        argmax_predictions = argmax_predictions.float()
+
+        # Iterate over timesteps in batch.
+        batch_size = gold_labels.size(0)
+        for i in range(batch_size):
+            sequence_prediction = argmax_predictions[i, :]
+            sequence_gold_label = gold_labels[i, :]
+            length = sequence_lengths[i]
+
+            if length == 0:
+                # It is possible to call this metric with sequences which are
+                # completely padded. These contribute nothing, so we skip these rows.
+                continue
+
+            gold_string_labels = [self._label_vocabulary[label_id]
+                                  for label_id in sequence_gold_label[:length].tolist()]
+            gold_spans = [(string_tag, (index, index + 1)) for index, string_tag in enumerate(gold_string_labels)]
+
+            if not self._unlabeled_vals:  
+                predicted_string_labels = [self._label_vocabulary[label_id]
+                                       for label_id in sequence_prediction[:length].tolist()]
+                predicted_spans = [(string_tag, (index, index + 1)) for index, string_tag 
+                                   in enumerate(predicted_string_labels) if string_tag != "O"]
+            else:
+                predicted_string_labels = [self._label_vocabulary[label_id]
+                                       for label_id in sequence_prediction[:length].tolist()]
+                predicted_spans = []
+                for _, (index, _) in gold_spans:
+                    string_tag = predicted_string_labels[index] 
+                    predicted_spans.append((string_tag, (index, index + 1)))
+            """
+            print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
+            print('\n{}\n{}\n'.format(gold_spans, predicted_spans))
+            print(sequence_prediction[:length]) 
+            print(sequence_gold_label[:length])
+            """
+
+            duplicate_labels = defaultdict(int)
+            for span in predicted_spans:
+                if span in gold_spans:
+                    self._true_positives[span[0]] += 1
+                    gold_spans.remove(span)
+                else:
+                    self._false_positives[span[0]] += 1
+
+                duplicate_labels[span[0]] += 1 
+            
+            for k, v in duplicate_labels.items():
+                if v > 1:
+                    self._uniqueness_err[k] += 1
+
+            # These spans weren't predicted.
+            for span in gold_spans:
+                self._false_negatives[span[0]] += 1
+        
+        # output the last one
+        #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
+
     def get_metric(self, reset: bool = False):
         """
         Returns
