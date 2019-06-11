@@ -37,10 +37,11 @@ class SrlLemmaAutoencoder(Model):
 
         self.kl_loss = None
     
-    def add_parameters(self, nlabel: int, nlemma: int):
+    def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
         if self.encoder is not None:
             self.encoder.add_parameters(nlabel)
-        self.decoder.add_parameters(nlemma)
+        if self.decoder is not None:
+            self.decoder.add_parameters(nlemma, lemma_embedder_weight)
 
     def forward(self, 
                 mask: torch.Tensor,
@@ -50,16 +51,16 @@ class SrlLemmaAutoencoder(Model):
                 embedded_edges: torch.Tensor,
                 edge_type_onehots: torch.Tensor = None,
                 contexts: torch.Tensor = None) -> torch.Tensor:
+        embedded_predicates = embedded_nodes[:, [0], :]
+        # reconstruction (argument) loss (batch_size,)
+        if embedded_edges is None: # stupid compatibility
+            embedded_edges = embedded_nodes[:, 1:, :]
+        logits = self.decoder(None, embedded_edges, embedded_predicates)
+        self.logits = logits.squeeze(0)
+
         self.kldistance = 0
         self.likelihood = 0 
         elbo = -self.likelihood - self.kldistance
-
-        # (batch_size, n_node, n_lemma)
-        embedded_arguments = embedded_nodes[:, 1:, :] 
-        embedded_predicates = embedded_nodes[:, :1, :]
-
-        self.logits = self.decoder(embedded_arguments, embedded_predicates)
-
         return elbo 
     
     def _likelihood(self,

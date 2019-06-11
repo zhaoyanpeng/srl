@@ -37,7 +37,8 @@ class VaeSemanticRoleLabeler(Model):
         self.nsampling = nsampling
         self.straight_through = straight_through
         self.autoencoder.add_parameters(self.classifier.nclass,
-                                        self.classifier.nclass)
+                                        self.classifier.nclass,
+                                        None)
         self.tau = self.classifier.tau
         initializer(self)
     
