@@ -101,8 +101,9 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['L'] = L 
             output_dict['C'] = C 
             output_dict['loss'] = L + self.alpha * C 
+            output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
         else: ### unlabled halve
-            y_logs, y_ls, y_lprobs = [], [], []
+            y_logs, y_ls, y_lprobs, lls, kls = [], [], [], [], []
             for _ in range(self.nsampling):
                 gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
                     self.classifier.gumbel_relax(argument_mask, arg_logits)
@@ -113,6 +114,7 @@ class VaeSemanticRoleLabeler(Model):
                 onehots = labels_relaxed if self.continuous_label else None
                 L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
                     encoded_labels, edge_type_onehots = onehots)
+                lls.append(self.autoencoder.likelihood)
                 
                 # log posteriors
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
@@ -159,6 +161,11 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['KL'] = -KL 
             output_dict['L_u'] = L_u
             output_dict['loss'] = L_u + KL
+
+            lls = torch.stack(lls, 0)
+            if (lls < 0).any():
+                raise ValueError('LL should be non-negative.') 
+            output_dict['LL'] = torch.mean(lls)
 
         return output_dict 
 

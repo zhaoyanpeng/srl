@@ -16,7 +16,8 @@ class SrlGraphAutoencoder(Model):
                  encoder: Seq2VecEncoder, # a latent z
                  decoder: Seq2SeqEncoder, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder, # posterior distribution
-                 alpha: float = 0.5,      # kl weight
+                 kl_alpha: float = 1.0,   # kl weight
+                 ll_alpha: float = 1.0,   # ll weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None, # 
                  b_use_z: bool = True,
@@ -33,7 +34,8 @@ class SrlGraphAutoencoder(Model):
         self._b_ctx_predicate = b_ctx_predicate
         self._b_use_z = b_use_z
 
-        self.alpha = alpha
+        self.kl_alpha = kl_alpha
+        self.ll_alpha = ll_alpha
         self.kl_loss = None
     
     def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
@@ -63,7 +65,7 @@ class SrlGraphAutoencoder(Model):
         kld = self._kld_simple(z_mu, z_std) 
         # feature dimension, then sample dimension
         kld = torch.mean(torch.sum(kld, -1), -1) 
-        self.kldistance = self.alpha * kld 
+        self.kldistance = self.kl_alpha * kld 
         
         # (nsample, batch_size, n_node, n_lemma)
         embedded_predicates = embedded_nodes[:, [0], :]
@@ -80,7 +82,8 @@ class SrlGraphAutoencoder(Model):
                                node_types.contiguous().view([-1, nnode]),
                                average = None) 
         # average along sample dimension
-        self.likelihood = torch.mean(llh.view([self.nsample, batch_size]), 0) 
+        llh = torch.mean(llh.view([self.nsample, batch_size]), 0)
+        self.likelihood = self.ll_alpha * llh 
 
         elbo = -self.likelihood - self.kldistance
         return elbo  

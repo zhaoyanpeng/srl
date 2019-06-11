@@ -56,6 +56,8 @@ class VaeSrlTrainer(Trainer):
                  bpr_loss_scalar: float = 1.,
                  kld_update_rate: float = None,
                  kld_update_unit: int = None,
+                 noun_loss_scalar: float = 1.,
+                 verb_loss_scalar: float = 1.,
                  feature_matching: bool = False,
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
@@ -112,6 +114,10 @@ class VaeSrlTrainer(Trainer):
         self.bpr_loss_scalar = bpr_loss_scalar
         self.kld_update_rate = kld_update_rate
         self.kld_update_unit = kld_update_unit
+
+        self.noun_loss_scalar = noun_loss_scalar
+        self.verb_loss_scalar = verb_loss_scalar
+
         # wgan
         self.feature_matching = feature_matching
         self.use_wgan = use_wgan 
@@ -221,22 +227,32 @@ class VaeSrlTrainer(Trainer):
             self.optimizer.zero_grad()
 
             ### labeled data
-            loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
-                                        verb_batch, 
-                                        training=True, 
-                                        retrive_crossentropy = False, 
-                                        supervisely_training = True,
-                                        peep_prediction=False)
+            if self.verb_loss_scalar > 0:
+                loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
+                                            verb_batch, 
+                                            training=True, 
+                                            retrive_crossentropy = False, 
+                                            supervisely_training = True,
+                                            peep_prediction=False)
+            else:
+                loss_verb = 0.
+                L = C = LL = KL = None
 
             ### unlabeled data
-            loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
-                                        noun_batch, 
-                                        training=True, 
-                                        retrive_crossentropy = True, 
-                                        supervisely_training = False,
-                                        peep_prediction=False)
+            if self.noun_loss_scalar > 0:
+                loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
+                                            noun_batch, 
+                                            training=True, 
+                                            retrive_crossentropy = True, 
+                                            supervisely_training = False,
+                                            peep_prediction=False)
+            else:
+                loss_noun = 0.
+                ce_loss = kl_loss = L_u = H = None
+                
 
-            loss = loss_verb + loss_noun 
+            loss = self.verb_loss_scalar * loss_verb + \
+                   self.noun_loss_scalar * loss_noun 
 
             if ce_loss is not None:
                 ce_loss = ce_loss.item()
@@ -568,6 +584,9 @@ class VaeSrlTrainer(Trainer):
         kld_update_rate = params.pop("kld_update_rate", None)
         kld_update_unit = params.pop("kld_update_unit", None)
         dis_min_loss = params.pop("dis_min_loss", -1.)
+        
+        noun_loss_scalar = params.pop("noun_loss_scalar", 1.)
+        verb_loss_scalar = params.pop("verb_loss_scalar", 1.)
 
         consecutive_update = params.pop("consecutive_update", False)
         dis_max_nbatch = params.pop("dis_max_nbatch", 1)
@@ -669,6 +688,8 @@ class VaeSrlTrainer(Trainer):
                    bpr_loss_scalar = bpr_loss_scalar,
                    kld_update_rate = kld_update_rate,
                    kld_update_unit = kld_update_unit,
+                   noun_loss_scalar = noun_loss_scalar,
+                   verb_loss_scalar = verb_loss_scalar,
                    feature_matching = feature_matching,
                    use_wgan = use_wgan,
                    clip_val = clip_val,

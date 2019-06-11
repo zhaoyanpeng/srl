@@ -17,7 +17,8 @@ class SrlLstmsAutoencoder(Model):
                  encoder: Seq2VecEncoder = None, # a latent z
                  decoder: Seq2SeqEncoder = None, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder = None, # posterior distribution
-                 alpha: float = 0.5,      # kl weight
+                 kl_alpha: float = 1.0,   # kl weight
+                 ll_alpha: float = 1.0,   # ll weight
                  nsample: int = 1,        # # of samples from the posterior distribution 
                  label_smoothing: float = None,
                  b_use_z: bool = True,
@@ -34,7 +35,8 @@ class SrlLstmsAutoencoder(Model):
         self._b_ctx_predicate = b_ctx_predicate
         self._b_use_z = b_use_z
         
-        self.alpha = alpha
+        self.kl_alpha = kl_alpha
+        self.ll_alpha = ll_alpha
 
         self.kldistance = None 
         self.likelihood = None 
@@ -66,7 +68,9 @@ class SrlLstmsAutoencoder(Model):
         # reconstruction (argument) loss (batch_size,)
         logits = self.decoder(z, embedded_edges, embedded_predicates)
         llh = self._likelihood(mask, logits, node_types, average = None) 
-        return -llh 
+        self.likelihood = self.ll_alpha * llh 
+
+        return -self.likelihood 
 
     def kld(self,
             posteriors, # logrithm 
@@ -92,12 +96,12 @@ class SrlLstmsAutoencoder(Model):
                 #kl_loss = torch.mean(kl_loss)
 
                 # loss on sentence level
-                kl_loss = self.alpha * kl_loss 
+                self.kldistance = self.kl_alpha * kl_loss 
             else:
-                kl_loss = self.alpha * posteriors
+                self.kldistance = self.kl_alpha * posteriors
         else:
-            kl_loss = self.alpha * posteriors
-        return kl_loss 
+            self.kldistance = self.kl_alpha * posteriors 
+        return self.kldistance 
 
     def _likelihood(self,
                     mask: torch.Tensor,
