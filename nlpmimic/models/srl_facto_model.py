@@ -24,6 +24,7 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 reweight: bool = True,
                  coupled_loss: bool = False,
                  straight_through: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -35,6 +36,7 @@ class VaeSemanticRoleLabeler(Model):
         self.autoencoder = autoencoder 
 
         self.alpha = alpha
+        self.reweight = reweight
         self.nsampling = nsampling
         self.coupled_loss = coupled_loss 
         self.straight_through = straight_through
@@ -64,25 +66,17 @@ class VaeSemanticRoleLabeler(Model):
         arg_logits, arg_labels, arg_lemmas = self.classifier.select_args(
             logits, srl_frames, lemmas['lemmas'], argument_indices) 
 
-        C = self.classifier.labeled_loss(argument_mask, arg_logits, arg_labels) 
-        C = self.alpha * C 
-        
-        #embedded_nodes = self.classifier.encode_args(
-        #    lemmas, predicates, predicate_indicators, argument_indices, None) 
-        embedded_nodes = self.classifier.encode_predt(predicates, predicate_indicators)
-        encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
+        # basic output stuff: only concerned with role-prediction 
+        output_dict = {"logits": logits,
+                       "logits_softmax": out_dict['logits_softmax'],
+                       "mask": mask}
 
-        self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, encoded_labels)
-        logits = self.autoencoder.logits
+        if not supervisely_training: # do not need to evaluate labeled data
+            self.classifier.add_outputs(0, mask, logits, srl_frames, output_dict, \
+                arg_mask=argument_mask, arg_indices=argument_indices, metadata=metadata) 
 
-        # basic output stuff: only concerned with arg-prediction 
-        output_dict = {"logits": logits, "mask": argument_mask, "C": C}
-        
-        self.classifier.add_arg_outputs(0, argument_mask, logits, arg_lemmas, output_dict, \
-            all_labels=srl_frames, arg_mask=argument_mask, arg_indices=argument_indices, metadata=metadata) 
-
-        if retrive_crossentropy: # must be true
-            output_dict['ce_loss'] = self.classifier.labeled_loss(argument_mask, logits, arg_lemmas)
+        if retrive_crossentropy: # must be true, to be customized for labeled and unlabeled setting
+            output_dict['ce_loss'] = self.classifier.labeled_loss(argument_mask, arg_logits, arg_labels)
 
 
         ### evaluation only
@@ -90,17 +84,71 @@ class VaeSemanticRoleLabeler(Model):
             return output_dict 
         ### evaluation over
 
+        
+        # common stuff: only encode predicates
+        embedded_nodes = self.classifier.encode_predt(predicates, predicate_indicators)
 
-        ### correct loss
-        # arg_logits: (batch_size, num_arg, nlabel) 
-        # logits:     (batch_size, num_arg, nlemma)
-        if not self.coupled_loss:
-            loss = output_dict['ce_loss'] + C
-        else:
-            loss = self.joint_loss(argument_mask, logits, arg_lemmas, arg_logits, arg_labels) 
+        ### labeled halve
+        if supervisely_training:
+            # classification loss for the labeled data
+            C = self.classifier.labeled_loss(argument_mask, arg_logits, arg_labels) 
+            # used in decoding
+            encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
+            self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, encoded_labels)
+            logits = self.autoencoder.logits
+            # argument prediction loss
+            LL = self.classifier.labeled_loss(argument_mask, logits, arg_lemmas)
 
-        # argument loss & label loss
-        output_dict['loss'] = loss 
+            if not self.coupled_loss:
+                loss = LL + self.alpha * C
+            else:
+                loss = self.joint_loss(argument_mask, logits, arg_lemmas, arg_logits, arg_labels) 
+
+            output_dict['C'] = C 
+            output_dict['LL'] = LL
+            output_dict['L'] = loss
+            output_dict['loss'] = loss 
+        else: ### unlabled halve
+            y_logs, y_ls, y_lprobs, lls, kls = [], [], [], [], []
+            for _ in range(self.nsampling):
+                gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
+                    self.classifier.gumbel_relax(argument_mask, arg_logits)
+                # used in decoding
+                labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
+                encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
+
+                # log posteriors
+                hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
+                hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
+                y_log = torch.sum(hard_lprobs, -1) # posteriors
+
+                y_lprobs.append(y_log)
+                
+                # argument prediction loss
+                self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, encoded_labels)
+                logits = self.autoencoder.logits
+
+                # argument prediction loss
+                LL = self.classifier.labeled_loss(argument_mask, logits, arg_lemmas, average=None) 
+                lls.append(LL)
+            
+            # samples (nsample, batch_size) 
+            y_lprobs = torch.stack(y_lprobs, 0)
+            lls = torch.stack(lls, 0)
+
+            if self.reweight:
+                y_probs = torch.exp(y_lprobs)
+                y_probs = y_probs.softmax(0)
+                
+                lls = lls * y_probs
+                lls = lls.sum(0)
+            else:
+                # along sample dimension
+                lls = torch.mean(lls, 0)
+
+            lls = torch.mean(lls)
+            output_dict['L_u'] = lls
+            output_dict['loss'] = lls 
 
         return output_dict 
 
@@ -109,6 +157,9 @@ class VaeSemanticRoleLabeler(Model):
                    args_lemmas: torch.Tensor,
                    role_logits: torch.Tensor, 
                    role_labels: torch.Tensor):
+        ### correct loss
+        # arg_logits: (batch_size, num_arg, nlabel) 
+        # logits:     (batch_size, num_arg, nlemma)
         args_logits_flat = args_logits.view(-1, args_logits.size(-1))
         args_log_probs = F.log_softmax(args_logits_flat, dim=-1)
         args_lemmas_flat = args_lemmas.view(-1, 1).long()
@@ -116,7 +167,7 @@ class VaeSemanticRoleLabeler(Model):
         role_logits_flat = role_logits.view(-1, role_logits.size(-1))
         role_log_probs = F.log_softmax(role_logits_flat, dim=-1)
         role_labels_flat = role_labels.view(-1, 1).long()
-        
+
         args_neg_ll = -torch.gather(args_log_probs, dim=1, index=args_lemmas_flat)
         role_neg_ll = -torch.gather(role_log_probs, dim=1, index=role_labels_flat)
         
@@ -132,7 +183,7 @@ class VaeSemanticRoleLabeler(Model):
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        return self.classifier.decode_args(output_dict)
+        return self.classifier.decode(output_dict)
 
     @overrides       
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
