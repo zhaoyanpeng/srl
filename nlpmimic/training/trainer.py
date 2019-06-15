@@ -73,20 +73,35 @@ class TrainerPieces(NamedTuple):
         #print('>>>the null lemma embedding index is {}'.format(model.null_lemma_idx))
         old_model_path = params.pop('old_model_path', None)
         update_key_set = dict(params.pop('update_key_set', {}))
+        excluded_fkeys = set(params.pop('excluded_fkeys', []))
+        tunable = params.pop('tunable', True)
         if old_model_path:
             new_dict_items = {} 
             model_dict = model.state_dict()
 
             old_model_dict = torch.load(old_model_path)
             for key, v in old_model_dict.items():
+                if '.' not in key: continue
                 idx = key.index('.')
                 field = key[:idx]
                 if field in update_key_set:
                     key = update_key_set[field] + key[idx:] 
+                    
+                    discarded = False
+                    for fkey in excluded_fkeys:
+                        if fkey in key:
+                            discarded = True
+                            break
+                    if discarded: continue
                     new_dict_items[key] = v
             print('------- load params: {}'.format(new_dict_items.keys()))
             model_dict.update(new_dict_items)
             model.load_state_dict(model_dict)
+            if not tunable:
+                for name, parameter in model.named_parameters():
+                    if name in new_dict_items:
+                        parameter.requires_grad_(False)
+                    
         # Initializing the model can have side effect of expanding the vocabulary
         vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 

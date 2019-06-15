@@ -317,6 +317,7 @@ class Conll2009DatasetReader(DatasetReader):
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
                  max_num_argument: int = 7,
+                 min_valid_lemmas: float = None,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
                  lazy: bool = False) -> None:
         super().__init__(lazy)
@@ -330,6 +331,7 @@ class Conll2009DatasetReader(DatasetReader):
         
         self.maximum_length = maximum_length
         self.valid_srl_labels = valid_srl_labels
+        self.min_valid_lemmas = min_valid_lemmas
 
         self.feature_labels = set(feature_labels)
         self.move_preposition_head = move_preposition_head
@@ -364,27 +366,38 @@ class Conll2009DatasetReader(DatasetReader):
             lemmas = [lemma if lemma in self.lemma_set else self._EMPTY_LEMMA for lemma in lemmas] 
         return lemmas
 
+    def is_valid_lemmas(self, lemmas: List[str], labels: List[str]) -> bool:
+        # in case there are not valid arguments, e.g., all are reset to 'M'
+        n_arg, n_valid_arg = 0, 0
+        for idx, label in enumerate(labels):
+            if label != self._EMPTY_LABEL:
+                n_arg += 1
+                if lemmas[idx] != self._EMPTY_LEMMA:
+                    n_valid_arg += 1
+        ratio = n_valid_arg / n_arg 
+        if ratio < self.min_valid_lemmas:
+            return False
+        else:
+            return True
+
     @overrides
     def _read(self, file_path: str) -> Iterable[Instance]:
         # if `file_path` is a URL, redirect to the cache
         file_path = cached_path(file_path)
         cnt: int = 0
+        xxl: int = 0 
+        isample: int = 0
         for sentence in self._sentences(file_path): 
             lemmas = self.filter_lemmas(sentence.lemmas)
             tokens = [Token(t) for t in sentence.tokens]
             pos_tags = sentence.pos_tags
             head_ids = sentence.head_ids
             dep_rels = sentence.dep_rels
-            #cnt += 1
-            #print('\n{}\n{}\n'.format(cnt, sentence.format()))
+            cnt += 1
             if len(tokens) > self.maximum_length:
                 continue
             if self.move_preposition_head:
                 sentence.move_preposition_head()
-            
-            #if cnt == 168:
-            #    import sys
-            #    sys.exit(0)
 
             if not sentence.srl_frames:    
                 if not self.allow_null_predicate:
@@ -409,6 +422,12 @@ class Conll2009DatasetReader(DatasetReader):
                     if not self.allow_null_predicate and \
                         len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
                         continue
+
+                    if self.min_valid_lemmas and not self.is_valid_lemmas(lemmas, labels):
+                        xxl += 1                 
+                        continue
+
+                    isample += 1    
                     predicate_indicators = [0 for _ in labels]
                     predicate_indicators[predicate_index] = 1
                     predicate_sense = sentence.predicate_senses[predicate_index]
@@ -423,6 +442,7 @@ class Conll2009DatasetReader(DatasetReader):
                                                 head_ids,
                                                 dep_rels,
                                                 self.instance_type) 
+        logger.info("{} sentences, {} instances, {} skipped instances".format(cnt, isample, xxl))
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],

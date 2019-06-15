@@ -27,6 +27,15 @@ DEFAULT_READER_MODE = 'basic'
 class HasBeenWarned:
     tqdm_ignores_underscores = False
 
+def peep_data(instances: Iterable[Instance], firstk: int = 10):
+    for idx, instance in enumerate(instances):
+        if idx >= firstk: break
+
+        lemmas = instance['metadata']['lemmas']
+        print(lemmas)
+        labels = instance['srl_frames']
+        print(labels)
+
 def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE) -> Dict[str, Iterable[Instance]]:
     """
     Load all the datasets specified by the config.
@@ -118,6 +127,7 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                                                          appendix_type=appendix_type,
                                                          firstk = train_dx_firstk)
                 train_dx_nyt_data = ensure_list(train_dx_nyt_data)
+                peep_data(train_dx_nyt_data, 3)
                 nytimes_reader.allow_null_predicate = allow_null_predicate
                 train_dx_data += train_dx_nyt_data # combine nytimes with gold
             else:

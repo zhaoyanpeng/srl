@@ -57,6 +57,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                  move_preposition_head: bool = False,
                  allow_null_predicate: bool = False,
                  max_num_argument: int = 7,
+                 min_valid_lemmas: float = None,
                  instance_type: str = _DEFAULT_INSTANCE_TYPE,
                  lazy: bool = False) -> None:
         super().__init__(lazy)
@@ -70,6 +71,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         
         self.maximum_length = maximum_length
         self.valid_srl_labels = valid_srl_labels
+        self.min_valid_lemmas = min_valid_lemmas
 
         self.feature_labels = set(feature_labels)
         self.move_preposition_head = move_preposition_head
@@ -99,10 +101,29 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             logger.info("Reading vocabulary of lemmas failed: %s", lemma_file)
             self.lemma_set = None
     
-    def filter_lemmas(self, lemmas: List[str]) -> List[str]:
-        if self.lemma_set is not None:
+    def filter_lemmas(self, lemmas: List[str], predicted_lemmas: List[str] = None) -> List[str]:
+        gold_lemmas = list(set(lemmas))  
+        gold_isnull = len(gold_lemmas) == 1 and gold_lemmas[0] == self._DUMMY
+
+        lemmas = lemmas if not gold_isnull else predicted_lemmas
+
+        if self.lemma_set is not None and lemmas is not None:
             lemmas = [lemma if lemma in self.lemma_set else self._EMPTY_LEMMA for lemma in lemmas] 
         return lemmas
+
+    def is_valid_lemmas(self, lemmas: List[str], labels: List[str]) -> bool:
+        # in case there are not valid arguments, e.g., all are reset to 'M'
+        n_arg, n_valid_arg = 0, 0
+        for idx, label in enumerate(labels):
+            if label != self._EMPTY_LABEL:
+                n_arg += 1
+                if lemmas[idx] != self._EMPTY_LEMMA:
+                    n_valid_arg += 1
+        ratio = n_valid_arg / n_arg 
+        if ratio < self.min_valid_lemmas:
+            return False
+        else:
+            return True
 
     @overrides
     def _read(self, 
@@ -115,9 +136,10 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         appendix_path = cached_path(appendix_path)
         cnt: int = 0
         xxl: int = 0 
+        llx: int = 0
         isample: int = 0
         for sentence in self._sentences(context_path, appendix_path, appendix_type): 
-            lemmas = self.filter_lemmas(sentence.lemmas)
+            lemmas = self.filter_lemmas(sentence.lemmas, sentence.predicted_lemmas)
             tokens = [Token(t) for t in sentence.tokens]
             pos_tags = sentence.predicted_pos_tags
             
@@ -129,10 +151,6 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                 continue
             if self.move_preposition_head:
                 sentence.move_preposition_head()
-            
-            #if cnt == 168:
-            #    import sys
-            #    sys.exit(0)
 
             if not sentence.srl_frames:    
                 #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
@@ -161,6 +179,11 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                         len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
                         #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
                         continue
+
+                    if self.min_valid_lemmas and not self.is_valid_lemmas(lemmas, labels):
+                        llx += 1                 
+                        continue
+
                     predicate_indicators = [0 for _ in labels]
                     predicate_indicators[predicate_index] = 1
                     predicate_sense = sentence.predicate_senses[predicate_index]
@@ -180,9 +203,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                         break
                 if isample >= firstk:
                     break
-        #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
-        #import sys
-        #sys.exit(0)
+        logger.info("{} sentences, {} instances, {} skipped instances".format(cnt, isample, llx))
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],
