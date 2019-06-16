@@ -94,7 +94,8 @@ class GanSemanticRoleLabeler(Model):
                                       optimizing_generator=optimizing_generator,
                                       relying_on_generator=relying_on_generator,
                                       caching_feature_only=caching_feature_only)
-            output_dict = {}
+            loss_gp = self.discriminator.gradient_penalty(argument_mask, embedded_nodes, arg_labels)
+            output_dict = {'gp_loss': loss_gp}
 
         # unlabeled data input to either the discriminator or generator
         if relying_on_generator:
@@ -103,11 +104,16 @@ class GanSemanticRoleLabeler(Model):
                 self.generator.gumbel_relax(argument_mask, arg_logits)
             labels_relaxed = gumbel_hard if self.straight_through else gumbel_false
 
+            arg_softmax = None
+            if not optimizing_generator: # used in wgan with gradient penalty
+                arg_softmax = F.softmax(arg_logits, -1) 
+
             #print('\n------     ---------     ---------     ---------- Relying on the GEN')
             loss = self.discriminator(argument_mask, embedded_nodes, arg_labels, 
                                       optimizing_generator=optimizing_generator,
                                       relying_on_generator=relying_on_generator,
                                       caching_feature_only=caching_feature_only,
+                                      edge_type_softmax=arg_softmax,
                                       edge_type_onehots=labels_relaxed)
         output_dict['loss'] = loss
 

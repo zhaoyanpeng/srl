@@ -346,14 +346,7 @@ def decode_metrics(model, batch, training: bool,
 
         if peep_prediction: #and not for_training:
             output_dict = model.decode(output_dict)
-            tokens = output_dict['tokens'][:5]
-            labels = output_dict['srl_tags'][:5]
-            gold_srl = output_dict['gold_srl'][:5]
-            predicates = output_dict["predicate"]
-            pindexes = output_dict["predicate_index"]
-            for token, label, glabel, p, pid in zip(tokens, labels, gold_srl, predicates, pindexes):
-                xx = ['({}|{}: {}_{})'.format(idx, t, g, l) for idx, (t, g, l) in enumerate(zip(token, glabel, label))]
-                print('{} {}.{}\n'.format(xx, p, pid))
+            peep_predictions(output_dict)
     except KeyError:
         if training:
             raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"

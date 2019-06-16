@@ -10,5 +10,6 @@ from nlpmimic.models.vae.srl_vae_graph import SrlGraphAutoencoder
 from nlpmimic.models.vae.srl_vae_classifier import SrlVaeClassifier
 
 from nlpmimic.models.gan.generator import SrlGanGenerator
+from nlpmimic.models.gan.disc_wgan import SrlWganDiscriminator
 from nlpmimic.models.gan.discriminator import SrlGanDiscriminator
 

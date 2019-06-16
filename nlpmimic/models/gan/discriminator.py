@@ -47,6 +47,7 @@ class SrlGanDiscriminator(Model):
                 optimizing_generator: bool,
                 relying_on_generator: bool,
                 caching_feature_only: bool = False,
+                edge_type_softmax: torch.Tensor = None,
                 edge_type_onehots: torch.Tensor = None,
                 contexts: torch.Tensor = None) -> torch.Tensor:
 
@@ -94,6 +95,9 @@ class SrlGanDiscriminator(Model):
             return loss_ce
         else:
             return None
+
+    def gradient_penalty(self, arg1, arg2, arg3):
+        return None
 
     def embed_labels(self,
                      labels: torch.Tensor,

@@ -233,15 +233,6 @@ class GanSrlTrainer(Trainer):
                              real: Iterator[TensorDict] = None, 
                              peep: bool = False):
         self.optimizer_dis.zero_grad()
-        dis_loss_real, _, _, _, _ = self.batch_loss(
-                                    real, training = True, 
-                                    optimizing_generator = False,
-                                    relying_on_generator = False,
-                                    caching_feature_only = False,
-                                    retrive_crossentropy = False)
-        if torch.isnan(dis_loss_real):
-            raise ValueError("nan loss encountered")
-
         dis_loss_fake, _, _, _, _ = self.batch_loss(
                                     fake, training = True, 
                                     optimizing_generator = False,
@@ -251,21 +242,29 @@ class GanSrlTrainer(Trainer):
         if torch.isnan(dis_loss_fake):
             raise ValueError("nan loss encountered")
 
-        dis_loss = (dis_loss_real + dis_loss_fake) / 2.
+        dis_loss_real, _, _, _, gp_loss = self.batch_loss(
+                                    real, training = True, 
+                                    optimizing_generator = False,
+                                    relying_on_generator = False,
+                                    caching_feature_only = False,
+                                    retrive_crossentropy = False)
+        if torch.isnan(dis_loss_real):
+            raise ValueError("nan loss encountered")
+
+        dis_loss = (dis_loss_real + dis_loss_fake) #/ 2.
 
         d_loss = dis_loss.item() 
         if d_loss > self.dis_min_loss:
             dis_loss *= self.dis_loss_scalar
-            """
             if gp_loss is not None:
                 dis_loss = dis_loss + gp_loss
                 gp_loss = gp_loss.item()
-            """ 
             dis_loss.backward()
-            dis_batch_grad_norm = self.gradient(self.optimizer_dis, False, ibatch)
+            dis_batch_grad_norm = self.gradient(self.optimizer_dis, False, ibatch, gp_loss)
+            #logger.info('------------------------optimizing the discriminator {}'.format(ibatch))
         else:
             dis_batch_grad_norm = None 
-        return d_loss, None, dis_batch_grad_norm
+        return d_loss, dis_loss_real, dis_loss_fake, gp_loss, dis_batch_grad_norm
 
     def _train_epoch(self, epoch: int) -> Dict[str, float]:
         logger.info("Epoch %d/%d", epoch, self._num_epochs - 1)
@@ -342,13 +341,13 @@ class GanSrlTrainer(Trainer):
 
                 verb_batch = self.verb_sampler.sample(batch_size) 
 
-                d_loss, _, dis_batch_grad_norm = self._train_discriminator(
+                d_loss, d_real, d_fake, gp_loss, dis_batch_grad_norm = self._train_discriminator(
                     batch_num_total, noun_batch, real=verb_batch, peep=peep)
 
                 train_loss += d_loss
                 #logger.info('------------------------optimizing the discriminator {}'.format(dis_nbatch))
             else:
-                d_loss = dis_batch_grad_norm = None 
+                d_loss = d_real = d_fake = gp_loss = dis_batch_grad_norm = None 
                 #logger.info('\n------skip DISCRIMINATOR')
 
             if gen_nbatch >= self.gen_max_nbatch:
@@ -368,7 +367,9 @@ class GanSrlTrainer(Trainer):
                                                       ce_loss = ce_loss,
                                                       kl_loss = kl_loss,
                                                       bp_loss = bp_loss,
-                                                      #gp_loss = gp_loss,
+                                                      gp_loss = gp_loss,
+                                                      L = d_real,
+                                                      L_u = d_fake,
                                                       generator_loss = g_loss,
                                                       discriminator_loss = d_loss)
 
@@ -582,7 +583,8 @@ class GanSrlTrainer(Trainer):
     def rescale_gradients(self, parameter_names: List[str]) -> Optional[float]:
         return mimic_training_util.rescale_gradients(self.model, parameter_names, self._grad_norm)
 
-    def gradient(self, optimizer: torch.optim.Optimizer, for_generator: bool, batch_num_total: int) -> float:
+    def gradient(self, optimizer: torch.optim.Optimizer, 
+                 for_generator: bool, batch_num_total: int, gradient_penalty: torch.Tensor=None) -> float:
         # this rescales gradients of all the parameters of the model, it would be better to update 
         # gradients of generator's and discriminator's parameters respectively. To do this, we need
         # to retain parameter names of the generator and discriminator.
@@ -618,7 +620,8 @@ class GanSrlTrainer(Trainer):
             optimizer.step()
         
         # wgan: clip discriminator's parameter values to a small range
-        if self.use_wgan and not for_generator: 
+        # gradient penalty or parameter clipping
+        if self.use_wgan and not for_generator and gradient_penalty is None: 
             mimic_training_util.clip_parameters(self.model, self.dis_param_names, self.clip_val)
         return batch_grad_norm 
 
@@ -721,7 +724,7 @@ class GanSrlTrainer(Trainer):
             logger.info('{} is leaf: {}'.format(x[0], x[1].is_leaf))
         
         feature_matching = getattr(model.discriminator, 'feature_matching', False)
-        use_wgan = getattr(model.discriminator, '_use_wgan', False) 
+        use_wgan = getattr(model.discriminator, 'b_use_wgan', False) 
         if use_wgan:
             optimizer = Optimizer.from_params(parameters, params.pop("optimizer_wgan"))
             params.pop("optimizer", None)
