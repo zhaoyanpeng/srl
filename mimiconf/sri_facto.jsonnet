@@ -4,8 +4,9 @@
     },
     "dataset_reader":{
         "type":"conll2009",
-        "maximum_length": 100,
-        //"valid_srl_labels": ["A1", "A0", "A2", "AM-TMP", "A3", "AM-MNR", "AM-LOC", "A4"],
+        "maximum_length": 80,
+        "valid_srl_labels": ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
+                             "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"],
         "lemma_file":  "/disk/scratch1/s1847450/data/conll09/all.moved.arg.vocab",
         "lemma_use_firstk": 5,
         "feature_labels": ["pos", "dep"],
@@ -35,7 +36,7 @@
             "decoder": {
                 "type": "srl_basic_decoder",
                 "input_dim": 200, // predicate + label,
-                "dense_layer_dims": [450, 600],
+                "dense_layer_dims": [450, 600, 750],
                 "dropout": 0.1,
             },
         },
@@ -49,6 +50,17 @@
                         "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5",
                         "do_layer_norm": false,
                         "dropout": 0.0
+                    }
+                }
+            },
+            "lemma_embedder": {
+                "token_embedders": {
+                    "lemmas": {
+                        "type": "embedding",
+                        "embedding_dim": 100,
+                        "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
+                        "vocab_namespace": "lemmas",
+                        "trainable": false 
                     }
                 }
             },
@@ -84,6 +96,8 @@
         "alpha": 0.5,
         "nsampling": 10,
         "coupled_loss": true,
+        "sim_loss_type": null, //"l2",
+        "inf_loss_type": null, //"ex",
         "straight_through": true,
     },
     "iterator": {
@@ -99,9 +113,9 @@
         "patience": 200,
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
-        //"validation_metric": "+f1-measure-overall",
-        "validation_metric": "-loss",
-        "cuda_device": 3,
+        "validation_metric": "+f1-measure-overall",
+        //"validation_metric": "-loss",
+        "cuda_device": 2,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

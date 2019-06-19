@@ -231,9 +231,9 @@ class VaeSrlTrainer(Trainer):
                 loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
                                             verb_batch, 
                                             training=True, 
-                                            retrive_crossentropy = False, 
+                                            retrive_crossentropy = peep, 
                                             supervisely_training = True,
-                                            peep_prediction=False)
+                                            peep_prediction=peep)
             else:
                 loss_verb = 0.
                 L = C = LL = KL = None
@@ -243,7 +243,7 @@ class VaeSrlTrainer(Trainer):
                 loss_noun, ce_loss, kl_loss, _, L_u, H, _, _, _ = self.batch_loss(
                                             noun_batch, 
                                             training=True, 
-                                            retrive_crossentropy = True, 
+                                            retrive_crossentropy = False, 
                                             supervisely_training = False,
                                             peep_prediction=False)
             else:

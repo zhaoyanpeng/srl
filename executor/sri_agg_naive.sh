@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_agg_r_hard_alpha5.5_128_sp5.10_-c_rw_ap_p_5.0_del"
+model_name="sri_agg_r_hard_alpha5.5_128_sp1.10_-c_rw_ap_p_5.0_del"
 param_name="sri_agg_naive.jsonnet"
 model_path=$droot/model
 

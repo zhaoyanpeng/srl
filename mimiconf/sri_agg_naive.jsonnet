@@ -44,8 +44,8 @@
     "model": {
         "autoencoder": {
             "type": "srl_graph_ae",
-            "nsample": 2,
-            "alpha": 0.5,
+            "nsample": 1,
+            "kl_alpha": 0.5,
             "b_ctx_predicate": true,
             "encoder": {
                 "type": "srl_graph_encoder",

@@ -220,12 +220,12 @@ class VaeSrlTrainer(Trainer):
 
             self.optimizer.zero_grad()
 
-            loss, ce_loss, kl_loss, L, L_u, H, C, _, _ = self.batch_loss(
+            loss, ce_loss, kl_loss, L, L_u, H, C, LL, _ = self.batch_loss(
                                         noun_batch, 
                                         training=True, 
                                         retrive_crossentropy = True, 
                                         supervisely_training = True,
-                                        peep_prediction=False)
+                                        peep_prediction=peep)
 
             if ce_loss is not None:
                 ce_loss = ce_loss.item()
@@ -247,6 +247,7 @@ class VaeSrlTrainer(Trainer):
                                                       kl_loss = kl_loss,
                                                       L = L,
                                                       L_u = L_u,
+                                                      LL = LL,
                                                       H = H,
                                                       C = C)
 

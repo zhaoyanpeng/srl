@@ -137,7 +137,7 @@ class SrlGraphAutoencoder(Model):
         # parameters of the distribution from which 'z' is sampled
         z_mu, z_std = self.sampler.mu, self.sampler.std
         
-        """ 
+        
         ## 1st method 
         print()
         z_dim = z.size(-1)
@@ -158,12 +158,50 @@ class SrlGraphAutoencoder(Model):
 
         # along z dim, then batch_size dim, then nsample
         lq_z = torch.logsumexp(lq_z, 0) - np.log(batch_size) 
+        #lq_z = torch.exp(lq_z) * lq_z
         lq_z = torch.mean(lq_z)
         
         print("\n\n{} - {}\n\n".format(entropy, lq_z))
         mi = entropy - lq_z
+
+        import sys
+        sys.exit(0)
+        
+        """
+        ## 3rd method 
+        print()
+        z_dim = z.size(-1)
+        var = torch.pow(z_std, 2) + 1e-15 
+        # https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Differential_entropy
+        # entropy = 0.5 * z_dim * (np.log(2 * np.pi) + 1) + 0.5 * torch.log(var).sum(-1)
+        entropy = 0.5 * z_dim * np.log(2 * np.pi) + 0.5 * (1 + torch.log(var)).sum(-1) 
+        # negative entropy; along z dim, then batch_size & nsample 
+        entropy = -torch.mean(entropy) 
+        
+        #lq_z = self.sampler.lprob(z, z_mu, z_std)
+        #lq_z = torch.sum(lq_z, -1) 
+        #print(lq_z, lq_z.size())
+
+        z = z.unsqueeze(2)
+        var = var.transpose(0, 1).unsqueeze(0)
+        z_mu = z_mu.transpose(0, 1).unsqueeze(0)
+        #print(z.size(), var.size(), z_mu.size())
+
+        lq_z = -0.5 * (z_dim * np.log(2 * np.pi) + torch.log(var).sum(-1)) \
+               -0.5 * (torch.pow(z - z_mu, 2) / var).sum(-1) 
+
+        # along z dim, then batch_size dim, then nsample
+        lq_z = torch.logsumexp(lq_z, -1) - np.log(batch_size) 
+        lq_z = torch.mean(lq_z)
+        
+        #print("\n\n{} - {}\n\n".format(entropy, lq_z))
+        mi = entropy - lq_z
+
+        #import sys
+        #sys.exit(0)
         """
         
+        """
         ## Another method
         print()
         kl_0 = self._kld_simple(z_mu, z_std)
@@ -200,6 +238,7 @@ class SrlGraphAutoencoder(Model):
         
         #import sys
         #sys.exit(0)
+        """
 
         return mi, batch_size
 

@@ -24,6 +24,7 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model,
                  alpha: float = 0.0,
                  nsampling: int = 10,
+                 sim_loss_type: str = None, # l2 or cin
                  straight_through: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -35,10 +36,16 @@ class VaeSemanticRoleLabeler(Model):
 
         self.alpha = alpha
         self.nsampling = nsampling
+        self.sim_loss_type = sim_loss_type
         self.straight_through = straight_through
-        self.autoencoder.add_parameters(self.classifier.nclass,
-                                        self.vocab.get_vocab_size("lemmas"),
-                                        None)
+
+        output_dim = self.vocab.get_vocab_size("lemmas")
+        if self.sim_loss_type is not None:
+            output_dim = self.classifier.lemma_embedder.get_output_dim()
+            lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
+            self.lemma_vectors = lemma_embedder.weight
+        self.autoencoder.add_parameters(self.classifier.nclass, output_dim, None)
+
         self.tau = self.classifier.tau
         initializer(self)
     
@@ -58,9 +65,13 @@ class VaeSemanticRoleLabeler(Model):
         _, arg_labels, arg_lemmas = self.classifier.select_args(
             None, srl_frames, lemmas['lemmas'], argument_indices) 
         
-        #embedded_nodes = self.classifier.encode_args(
-        #    lemmas, predicates, predicate_indicators, argument_indices, None) 
-        embedded_nodes = self.classifier.encode_predt(predicates, predicate_indicators)
+        if self.sim_loss_type is not None:
+            embedded_nodes = self.classifier.encode_args(
+                lemmas, predicates, predicate_indicators, argument_indices, None) 
+            arg_embeddings = embedded_nodes[:, 1:, :]
+            embedded_nodes = embedded_nodes[:, :1, :]
+        else:
+            embedded_nodes = self.classifier.encode_predt(predicates, predicate_indicators)
 
         encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
 
@@ -69,12 +80,36 @@ class VaeSemanticRoleLabeler(Model):
 
         # basic output stuff 
         output_dict = {"logits": logits, "mask": argument_mask}
+        #self.classifier.add_arg_outputs(0, argument_mask, logits, arg_lemmas, output_dict, \
+        #    all_labels=srl_frames, arg_mask=argument_mask, arg_indices=argument_indices, metadata=metadata) 
+
+        if retrive_crossentropy and self.sim_loss_type is not None:
+            output_dict['ce_loss'] = self.sim_loss(logits, arg_embeddings, arg_mask=argument_mask)
+        elif retrive_crossentropy:
+            output_dict['ce_loss'] = self.classifier.labeled_loss(argument_mask, logits, arg_lemmas)
+
+
+        # return label embedding matrix and expand it along batch size
+        batch_size = encoded_labels.size(0) 
+        encoded_labels = self.classifier.embed_labels(None)   
+        encoded_labels = encoded_labels.unsqueeze(0).expand(batch_size, -1, -1)
+        self.autoencoder(None, None, embedded_nodes, None, encoded_labels)
+        roles_logits = self.autoencoder.logits
         
-        self.classifier.add_arg_outputs(0, argument_mask, logits, arg_lemmas, output_dict, \
+        if self.sim_loss_type is not None:
+            roles_logits = roles_logits.unsqueeze(2)
+            lemma_vectors = self.lemma_vectors.unsqueeze(0).unsqueeze(0)
+            # using negative loss as logits
+            roles_logits = -self.sim_loss(roles_logits, lemma_vectors, reduction = None)
+             
+        index = arg_lemmas.unsqueeze(1).expand(-1, self.classifier.nclass, -1)
+        roles_logits = torch.gather(roles_logits, -1, index) 
+        roles_logits = roles_logits.transpose(1, 2)
+
+        output_dict['logits'] = roles_logits
+        self.classifier.add_argument_outputs(0, argument_mask, roles_logits, arg_labels + 1, output_dict, \
             all_labels=srl_frames, arg_mask=argument_mask, arg_indices=argument_indices, metadata=metadata) 
 
-        if retrive_crossentropy:
-            output_dict['ce_loss'] = self.classifier.labeled_loss(argument_mask, logits, arg_lemmas)
 
         ### evaluation only
         if not self.training: 
@@ -84,10 +119,28 @@ class VaeSemanticRoleLabeler(Model):
         output_dict['loss'] = output_dict['ce_loss']
 
         return output_dict 
+    
+    def sim_loss(self, 
+                 prediction: torch.Tensor, 
+                 arg_embeddings: torch.Tensor,
+                 arg_mask: torch.Tensor = None,
+                 reduction: str = 'mean') -> torch.Tensor:
+        if self.sim_loss_type == 'l2':
+            loss = ((prediction - arg_embeddings) ** 2).sum(-1)
+        elif self.sim_loss_type == 'cosine':
+            loss = 1 - F.cosine_similarity(prediction, arg_embeddings, -1)
+        else:
+            pass
+
+        if reduction == 'mean':
+            loss = loss * arg_mask.float()
+            loss = torch.mean(loss.sum(-1))
+        return loss 
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        return self.classifier.decode_args(output_dict)
+        return self.classifier.decode_arguments(output_dict)
+        #return self.classifier.decode_args(output_dict)
 
     @overrides       
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:

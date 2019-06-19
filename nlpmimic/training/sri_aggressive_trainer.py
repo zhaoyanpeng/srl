@@ -322,7 +322,7 @@ class VaeSrlTrainer(Trainer):
 
 
             if C > 100:
-                for n, p in model.named_parameters(): 
+                for n, p in self.model.named_parameters(): 
                     #self.dis_param_names
                     #if n in param_signatures and p.grad is not None:
                     if p.grad is not None:

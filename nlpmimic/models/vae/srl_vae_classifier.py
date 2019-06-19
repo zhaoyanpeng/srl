@@ -189,7 +189,7 @@ class SrlVaeClassifier(Model):
                 labels = labels + 1
             encoded_labels = self.label_embedder(labels)
         else:
-            encoded_labels = None
+            encoded_labels = label_embeddings
         encoded_labels = self.embedding_dropout(encoded_labels)
         return encoded_labels
 

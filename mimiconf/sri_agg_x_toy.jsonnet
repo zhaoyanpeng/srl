@@ -27,7 +27,7 @@
     "model": {
         "autoencoder": {
             "type": "srl_graph_ae",
-            "alpha": 0.5,
+            "kl_alpha": 0.5,
             "nsample": 2,
             "b_use_z": true,
             "b_ctx_predicate": true,
@@ -119,7 +119,7 @@
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 10 
+        "batch_size": 5 
     },
     "trainer": {
         "type": "sri_aggressive",

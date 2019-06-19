@@ -391,9 +391,12 @@ def decode_metrics_vae(model, batch, training: bool,
         if retrive_crossentropy: 
             ce_loss = output_dict["ce_loss"]
 
+        #print('\n\n\n{}\n\n\n'.format(peep_prediction))
+
         if peep_prediction: #and not for_training:
             output_dict = model.decode(output_dict)
             peep_predictions(output_dict)
+            #print('\n\n\n---{}\n\n\n'.format(output_dict))
     except KeyError:
         if training:
             raise RuntimeError("The model you are trying to optimize does not contain a '*loss' key"

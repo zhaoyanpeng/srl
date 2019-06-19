@@ -82,18 +82,18 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_lhood",
-        //"type": "srl_vae_facto",
+        "type": "srl_vae_facto",
         "alpha": 0.5,
         "nsampling": 2,
-        //"coupled_loss": true,
-        "sim_loss_type": "cosine",
+        "coupled_loss": true,
+        "sim_loss_type": "l2",
+        "inf_loss_type": "ex",
         "straight_through": true,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 1 
+        "batch_size": 3 
     },
     "trainer": {
         "type": "sri_vae_lemma",

@@ -43,7 +43,7 @@
     "validation_ontraining_data": false,
 
     "add_unlabeled_noun": true,
-    "train_dx_firstk": 2000000,
+    "train_dx_firstk": 50000,
 
     "train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/train.verb",
     "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/devel.verb",
@@ -105,8 +105,8 @@
         "patience": 200,
         "shuffle": true,
         "num_serialized_models_to_keep": 3,
-        //"validation_metric": "+f1-measure-overall",
-        "validation_metric": "-loss",
+        "validation_metric": "+f1-measure-overall",
+        //"validation_metric": "-loss",
         "cuda_device": 1,
         "optimizer": {
             "type": "adadelta",

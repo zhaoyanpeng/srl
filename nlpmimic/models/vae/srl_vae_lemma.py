@@ -1,7 +1,3 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
 from typing import Tuple, Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
