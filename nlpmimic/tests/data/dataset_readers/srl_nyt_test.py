@@ -1,5 +1,6 @@
 # pylint: disable=no-self-use,invalid-name
 import pytest
+import itertools, json
 
 from tqdm import tqdm
 from collections import Counter
@@ -11,7 +12,87 @@ from nlpmimic.data.dataset_readers.conllx_unlabeled import ConllxUnlabeledDatase
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009DatasetReader
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
+def arg_lemma(instances, use_sense = True):
+    cnt, ipred, stats = 0, 0, defaultdict(dict)
+    for sent in instances:
+        if not sent.srl_frames:    
+            continue
+        cnt += 1
+        for pid, pred, frame in sent.srl_frames:
+            pargs = frame 
+            ipred += 1
+
+            if not use_sense:
+                pred = pred.split('.')[0]
+            
+            if pred in stats: # allocate mem
+                this_pred = stats[pred]
+            else:
+                this_pred = defaultdict(dict)
+                stats[pred] = this_pred
+
+            for idx, parg in enumerate(pargs): # syntax-arguments
+                if parg == 'O':
+                    continue
+                syntx = sent.predicted_lemmas[idx]
+
+                if parg in this_pred: # allocate mem
+                    this_parg = this_pred[parg]
+                else:
+                    this_parg = defaultdict(int)
+                    this_pred[parg] = this_parg
+                this_parg[syntx] += 1
+    return stats
+
+def write_arg_syntax(stats, ofile):
+    with open(ofile, 'w') as fw:
+        for k, v in stats.items():
+            data = {k: v}
+            json.dump(data, fw)
+            fw.write('\n') 
+
+def main_arg_lemma():
+    ofile = min_valid_lemmas = valid_srl_labels = None
+    conll_reader = ConllxUnlabeledDatasetReader(lazy = True,
+                                          lemma_file = ofile,
+                                          lemma_use_firstk = 5,
+                                          feature_labels=['pos', 'dep'], 
+                                          move_preposition_head=True,
+                                          instance_type='srl_graph',
+                                          maximum_length = 2019,
+                                          min_valid_lemmas = min_valid_lemmas,
+                                          max_num_argument = 7, 
+                                          valid_srl_labels = valid_srl_labels,
+                                          allow_null_predicate = False)
+
+    word = "v100.0" 
+    droot = "/disk/scratch1/s1847450/data/nytimes/"
+
+    ctx_name = 'nytimes.45.only'
+    apx_name = 'nytimes.45.verb.only'
+
+    #ctx_name = 'nytimes.45.only.small'
+    #apx_name = 'nytimes.45.verb.only.small'
+
+    context_file =  droot + "morph.only/{}".format(ctx_name)
+    appendix_file = droot + "morph.only/{}".format(apx_name)
+    
+    instances = conll_reader._sentences(context_file, appendix_file, 
+                                        appendix_type='nyt_learn')
+
+    ifile = instances
+    ofile = droot + 'lemmasign/{}.model'.format(ctx_name) 
+
+    use_sense = False    
+    stats = arg_lemma(ifile, use_sense = use_sense)
+    write_arg_syntax(stats, ofile)
+
 class TestConll2003Reader(NlpMimicTestCase):
+
+    def test_move_head(self):
+        main_arg_lemma()
+
+    @pytest.mark.skip(reason="mute")
     def test_read_from_conllx_file(self):
         valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
                             "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"]
