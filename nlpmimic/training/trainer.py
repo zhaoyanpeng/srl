@@ -56,8 +56,7 @@ class TrainerPieces(NamedTuple):
             vocab = Vocabulary.from_params(
                     params.pop("vocabulary", {}),
                     (instance for key, dataset in all_datasets.items()
-                     for instance in dataset
-                     if key in datasets_for_vocab_creation)
+                     if key in datasets_for_vocab_creation for instance in dataset)
             )
 
         print(vocab._index_to_token['srl_tags'])
@@ -146,9 +145,9 @@ class TrainerPieces(NamedTuple):
         for name in tunable_parameter_names:
             logger.info(name)
         
-        if train_dx_data is not None:
+        if train_dx_data is not None and isinstance(train_dx_data, list):
             TrainerPieces.check_data(train_dx_data)
-        if train_dy_data is not None:
+        if train_dy_data is not None and isinstance(train_dy_data, list):
             TrainerPieces.check_data(train_dy_data, vocab)
 
         return TrainerPieces(model, iterator,

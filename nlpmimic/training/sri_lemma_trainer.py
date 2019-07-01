@@ -22,8 +22,8 @@ from allennlp.training.trainer import Trainer
 from allennlp.training import util as training_util
 
 from nlpmimic.training import util as mimic_training_util
-from nlpmimic.training.util import DataSampler, DataLazyLoader 
 from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
+from nlpmimic.training.util import RealDataLazyLoader, DataSampler, DataLazyLoader 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -147,7 +147,11 @@ class VaeSrlTrainer(Trainer):
             self.data_sampler = DataLazyLoader(self.train_data, self.iterator, self.sort_by_length)
 
         if self.train_dx_data is not None:
-            self.noun_sampler = DataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+            if not isinstance(self.train_dx_data, list):
+                self.noun_sampler = RealDataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+            else:
+                self.noun_sampler = DataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+
         if self.train_dy_data is not None:
             self.verb_sampler = DataSampler(self.train_dy_data, self.iterator, self.sort_by_length) 
 

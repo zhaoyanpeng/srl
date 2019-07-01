@@ -63,6 +63,12 @@
     "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     "datasets_for_vocab_creation": ["vocab"],
 
+    "iterator": {
+        "type": "bucket",
+        "sorting_keys": [["tokens", "num_tokens"]],
+        "batch_size": 5 
+    },
+
     "trainer": {
         "type": "sri_synyt",
     }

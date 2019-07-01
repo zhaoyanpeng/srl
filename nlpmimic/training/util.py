@@ -315,8 +315,7 @@ class RealDataLazyLoader(object):
         return self.iterator.get_num_batches(self.instances)
 
     def _iterate(self):
-        return instances 
-        #yield from self.instances
+        yield from iter(self.instances)
 
     def sample(self) -> Iterator[TensorDict]:
         for samples in lazy_groups_of(self._iterate(), self.iterator._batch_size):

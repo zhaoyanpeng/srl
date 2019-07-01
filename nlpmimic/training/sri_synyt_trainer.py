@@ -18,8 +18,8 @@ from allennlp.training.trainer_base import TrainerBase
 from allennlp.training import util as training_util
 
 from nlpmimic.training import util as mimic_training_util
-from nlpmimic.training.util import DataSampler, DataLazyLoader 
 from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
+from nlpmimic.training.util import RealDataLazyLoader, DataSampler, DataLazyLoader 
 from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 @TrainerBase.register("sri_synyt")
 class VaeSrlTrainer():
     def __init__(self, 
+                 iterator,
                  train_dx, 
                  train_dy, 
                  train_dataset,
@@ -38,8 +39,12 @@ class VaeSrlTrainer():
         self.devel_dataset = devel_dataset
         self.test_dataset = test_dataset
 
+        self.iterator = iterator
         self.train_dx = train_dx
         self.train_dy = train_dy
+
+        if not isinstance(train_dx, list):
+            self.noun_sampler = RealDataLazyLoader(self.train_dx, self.iterator, False)
 
         self.model = model
 
@@ -47,12 +52,19 @@ class VaeSrlTrainer():
         pass
 
     def train(self) -> Dict[str, Any]:
-        for i in range(3):  
+
+        
+        for i in range(2):  
             cnt = 0
-            for sent in self.train_dx:
+
+            train_generator = self.noun_sampler.sample()
+            num_training_batches = self.noun_sampler.nbatch() 
+            train_generator_tqdm = Tqdm.tqdm(train_generator, total=num_training_batches)
+
+            for noun_batch, batch_size in train_generator_tqdm:
                 cnt += 1
-                #print(sent)
-                if cnt > 1:
+                print(noun_batch, batch_size)
+                if cnt >= 1:
                     print('\n\n\n')
                     break
 
@@ -74,10 +86,17 @@ class VaeSrlTrainer():
         all_datasets = mimic_training_util.datasets_from_params(params, reader_mode)
         datasets_for_vocab_creation = set(params.pop("datasets_for_vocab_creation", all_datasets))
 
-        params.pop("vocabulary", {})
+        trainer_params = params.pop("trainer")
         params.pop("add_unlabeled_noun", False)
 
-        trainer_params = params.pop("trainer")
+        vocab = Vocabulary.from_params(
+                params.pop("vocabulary", {}),
+                (instance for key, dataset in all_datasets.items()
+                 if key in datasets_for_vocab_creation for instance in dataset)
+        )
+        
+        iterator = DataIterator.from_params(params.pop("iterator"))
+        iterator.index_with(vocab)
 
         train_dx_data = all_datasets['train_dx']
         train_dy_data = all_datasets['train_dy']
@@ -87,5 +106,5 @@ class VaeSrlTrainer():
         train_data = None
 
         # Special logic to keep old from_params behavior.
-        return cls(train_dx_data, train_dy_data, train_data, devel_dataset = validation_data, test_dataset = test_data)
+        return cls(iterator, train_dx_data, train_dy_data, train_data, devel_dataset = validation_data, test_dataset = test_data)
 
