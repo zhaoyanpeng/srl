@@ -101,6 +101,8 @@ class VaeSemanticRoleLabeler(Model):
             lemma_vectors = self.lemma_vectors.unsqueeze(0).unsqueeze(0)
             # using negative loss as logits
             roles_logits = -self.sim_loss(roles_logits, lemma_vectors, reduction = None)
+        else:
+            roles_logits = F.softmax(roles_logits, -1) # to be comparable among roles
              
         index = arg_lemmas.unsqueeze(1).expand(-1, self.classifier.nclass, -1)
         roles_logits = torch.gather(roles_logits, -1, index) 

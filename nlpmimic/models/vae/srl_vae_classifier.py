@@ -36,7 +36,10 @@ class SrlVaeClassifier(Model):
                  tunable_tau: bool = False,
                  suppress_nonarg: bool = False,
                  seq_projection_dim: int = None, 
-                 embedding_dropout: float = 0.,
+                 token_dropout: float = 0.,
+                 lemma_dropout: float = 0.,
+                 label_dropout: float = 0.,
+                 predt_dropout: float = 0.,
                  label_smoothing: float = None,
                  ignore_span_metric: bool = False,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -49,7 +52,11 @@ class SrlVaeClassifier(Model):
         self.label_embedder = label_embedder
         self.predt_embedder = predt_embedder
         self.psign_embedder = Embedding(2, psign_dim)
-        self.embedding_dropout = Dropout(p=embedding_dropout)
+
+        self.token_dropout = Dropout(p=token_dropout)
+        self.lemma_dropout = Dropout(p=lemma_dropout)
+        self.label_dropout = Dropout(p=label_dropout)
+        self.predt_dropout = Dropout(p=predt_dropout)
 
         self.tau = None
         self.minimum_tau = 1e-5 
@@ -88,7 +95,7 @@ class SrlVaeClassifier(Model):
                 lemmas: Dict[str, torch.LongTensor] = None) -> Dict[str, torch.Tensor]:
         
         embedded_tokens = self.token_embedder(tokens)
-        embedded_tokens = self.embedding_dropout(embedded_tokens)
+        embedded_tokens = self.token_dropout(embedded_tokens)
 
         batch_size = embedded_tokens.size(0) 
         mask = get_text_field_mask(tokens)
@@ -190,7 +197,7 @@ class SrlVaeClassifier(Model):
             encoded_labels = self.label_embedder(labels)
         else:
             encoded_labels = label_embeddings
-        encoded_labels = self.embedding_dropout(encoded_labels)
+        encoded_labels = self.label_dropout(encoded_labels)
         return encoded_labels
 
     def encode_predt(self, predicates: torch.Tensor, predicate_sign: torch.LongTensor):
@@ -202,6 +209,7 @@ class SrlVaeClassifier(Model):
         # (batch_size, dim, 1); select the predicate embedding
         embedded_predicates = torch.bmm(embedded_predicates, psigns)
         embedded_predicates = embedded_predicates.transpose(1, 2)
+        embedded_predicates = self.predt_dropout(embedded_predicates)
         return embedded_predicates
 
     def encode_args(self,
@@ -224,16 +232,18 @@ class SrlVaeClassifier(Model):
         arg_indices = arg_indices.unsqueeze(-1).expand(-1, -1, lemma_dim)
         
         embedded_arg_lemmas = torch.gather(embedded_lemmas, 1, arg_indices)
+        embedded_arg_lemmas = self.lemma_dropout(embedded_arg_lemmas)  
+
         embedded_predicates = embedded_predicates.transpose(1, 2)
+        embedded_predicates = self.predt_dropout(embedded_predicates)
+
         embedded_nodes = torch.cat([embedded_predicates, embedded_arg_lemmas], 1)
 
         if embedded_seqs is not None:
             narg = arg_indices.size(1)
             embedded_seqs = embedded_seqs.unsqueeze(1).expand(-1, narg + 1, -1)
             embedded_nodes = torch.cat([embedded_nodes, embedded_seqs], -1)
-        
-        # apply dropout to predicate embeddings
-        embedded_nodes = self.embedding_dropout(embedded_nodes)
+
         return embedded_nodes
     
     def select_args(self,

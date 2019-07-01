@@ -1,7 +1,3 @@
-"""
-An LSTM with Recurrent Dropout and the option to use highway
-connections between layers.
-"""
 from typing import Set, Dict, List, TextIO, Optional, Any
 import numpy as np
 import torch
@@ -24,13 +20,19 @@ class SrlBasicDecoder(Seq2SeqEncoder):
     def __init__(self, 
                  input_dim: int, 
                  dense_layer_dims: List[int],
+                 b_use_bilinear: bool = False,
                  hidden_dim: int = None,
                  dropout: float = 0.0) -> None:
         super(SrlBasicDecoder, self).__init__()
         self.signature = 'srl_basic_decoder'
 
         self._input_dim = input_dim 
+        self._b_use_bilinear = b_use_bilinear
         self._dense_layer_dims = dense_layer_dims 
+
+        if self._b_use_bilinear:
+            self._input_dim //= 2
+            self._dense_layer_dims = []
         
         self._dense_layers = []
         for i_layer, dim in enumerate(self._dense_layer_dims):
@@ -45,8 +47,12 @@ class SrlBasicDecoder(Seq2SeqEncoder):
         self._output_dim = output_dim 
         #self._lemma_embedder_weight = lemma_embedder_weight 
 
-        label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
-        setattr(self, 'label_projection_layer', label_layer)
+        if not self._b_use_bilinear:
+            label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
+            setattr(self, 'label_projection_layer', label_layer)
+        else:
+            dense_layer = torch.nn.Bilinear(self._input_dim, self._input_dim, self._output_dim) 
+            setattr(self, 'bilinear_layer', dense_layer)
 
     def forward(self, 
                 z: torch.Tensor,
@@ -70,10 +76,16 @@ class SrlBasicDecoder(Seq2SeqEncoder):
             embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
             embedded_nodes.append(embedded_predicates)
 
-        embedded_nodes = torch.cat(embedded_nodes, -1)
-        embedded_nodes = self.multi_dense(embedded_nodes)
-
-        logits = self.label_projection_layer(embedded_nodes)
+        if not self._b_use_bilinear:
+            embedded_nodes = torch.cat(embedded_nodes, -1)
+            embedded_nodes = self.multi_dense(embedded_nodes)
+            logits = self.label_projection_layer(embedded_nodes)
+        else:
+            shape = embedded_edges.size()
+            embedded_nodes[0] = embedded_nodes[0].contiguous().view(shape)
+            embedded_nodes[1] = embedded_nodes[1].contiguous().view(shape)
+            logits = self.bilinear_layer(embedded_nodes[0], embedded_nodes[1])
+            
         return logits 
     
     def multi_dense(self, embedded_nodes: torch.Tensor) -> torch.Tensor:

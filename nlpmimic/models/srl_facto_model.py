@@ -67,7 +67,10 @@ class VaeSemanticRoleLabeler(Model):
                 retrive_crossentropy: bool = False,
                 supervisely_training: bool = False, # deliberately added here
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
+
         out_dict = self.classifier.encode_patterns(tokens, predicate_indicators, argument_mask, argument_indices) 
+        #out_dict = self.classifier(tokens, predicate_indicators) 
+
         embedded_seqs = out_dict['embedded_seqs']
         logits, mask = out_dict['logits'], out_dict['mask']
 
@@ -118,6 +121,8 @@ class VaeSemanticRoleLabeler(Model):
                 roles_logits = arg_logits
             elif self.inf_loss_type == 'pa': # p(a | y, p)
                 roles_logits = roles_logits 
+            else:
+                raise ValueError('Please specify evaluation metric.')
 
             output_dict['logits'] = roles_logits
             self.classifier.add_argument_outputs(0, argument_mask, roles_logits, arg_labels + 1, output_dict, \
