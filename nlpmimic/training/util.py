@@ -4,7 +4,7 @@ Helper functions for Trainers
 from typing import cast, Dict, Optional, List, Tuple, Union, Iterable, Iterator, Any, NamedTuple
 import sys, logging, random
 
-from allennlp.common.util import ensure_list, add_noise_to_dict_values, lazy_groups_of
+from allennlp.common.util import is_lazy, ensure_list, add_noise_to_dict_values, lazy_groups_of
 from allennlp.common.checks import ConfigurationError, check_for_data_path, check_for_gpu
 from allennlp.common.params import Params
 from allennlp.training.util import sparse_clip_norm
@@ -100,12 +100,16 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                 train_dy_nyt_data = [] # allow empty nyt dy
             else:
                 appendix_type = 'nyt_learn' if using_labeled_verb else 'nyt_infer'
-                train_dy_nyt_data = nytimes_reader._read(train_dy_context_path, 
-                                                         train_dy_appendix_path, 
-                                                         appendix_type=appendix_type,
-                                                         firstk = train_dy_firstk)
-                train_dy_nyt_data = ensure_list(train_dy_nyt_data)
-            train_dy_data += train_dy_nyt_data # combine nytimes with gold
+
+                train_dy_nyt_data = nytimes_reader.read(train_dy_context_path, 
+                                                        train_dy_appendix_path, 
+                                                        appendix_type=appendix_type,
+                                                        firstk = train_dy_firstk)
+
+            if isinstance(train_dy_nyt_data, list) and isinstance(train_dy_data, list):
+                train_dy_data += train_dy_nyt_data # combine nytimes with gold data
+            else:
+                train_dy_data = train_dy_nyt_data  # cannot add two iterators 
             
             if add_unlabeled_noun:
                 train_dx_context_path = params.pop('train_dx_context_path', None)
@@ -122,14 +126,19 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                 else:
                     nytimes_reader.allow_null_predicate = True 
                     appendix_type = 'nyt_infer'
-                train_dx_nyt_data = nytimes_reader._read(train_dx_context_path,
-                                                         train_dx_appendix_path,
-                                                         appendix_type=appendix_type,
-                                                         firstk = train_dx_firstk)
-                train_dx_nyt_data = ensure_list(train_dx_nyt_data)
-                peep_data(train_dx_nyt_data, 3)
+                
+                train_dx_nyt_data = nytimes_reader.read(train_dx_context_path,
+                                                        train_dx_appendix_path,
+                                                        appendix_type=appendix_type,
+                                                        firstk = train_dx_firstk)
+                if not nytimes_reader.lazy: 
+                    peep_data(train_dx_nyt_data, 3)
+
                 nytimes_reader.allow_null_predicate = allow_null_predicate
-                train_dx_data += train_dx_nyt_data # combine nytimes with gold
+                if isinstance(train_dx_nyt_data, list) and isinstance(train_dx_data, list):
+                    train_dx_data += train_dx_nyt_data  # combine nytimes with gold data
+                else:
+                    train_dx_data = train_dx_nyt_data   # cannot add two iterators 
             else:
                 params.pop('train_dx_context_path', None)
                 params.pop('train_dx_appendix_path', None)
@@ -164,7 +173,8 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         logger.info("Reading vocab source data from %s", vocab_src_path)
         vocab_data = validation_and_test_dataset_reader.read(vocab_src_path)
         
-        if reader_mode == NYT_READER_MODE:
+        if reader_mode == NYT_READER_MODE and isinstance(vocab_data, list) and \
+            isinstance(train_dy_nyt_data, list):
             vocab_data += train_dy_nyt_data
 
         datasets["vocab"] = vocab_data
@@ -282,6 +292,42 @@ class DataLazyLoader(object):
         for samples in lazy_groups_of(self._iterate(), self.iterator._batch_size):
             if self.shuffle_arguments:
                 shuffle_argument_indices(samples)
+            batch = Batch(samples)
+            batch.index_instances(self.iterator.vocab)
+            batch = batch.as_tensor_dict()
+            yield batch, len(samples)
+
+class RealDataLazyLoader(object):
+
+    def __init__(self, 
+                 instances: Iterable[Instance], 
+                 iterator: DataIterator, 
+                 sort_by_length: bool,
+                 shuffle_arguments: bool = False):
+        super().__init__()
+        self.instances = instances
+        self.iterator = iterator
+
+        self.sort_by_length = sort_by_length
+        self.shuffle_arguments = shuffle_arguments
+
+    def nbatch(self):
+        return self.iterator.get_num_batches(self.instances)
+
+    def _iterate(self):
+        return instances 
+        #yield from self.instances
+
+    def sample(self) -> Iterator[TensorDict]:
+        for samples in lazy_groups_of(self._iterate(), self.iterator._batch_size):
+            if self.shuffle_arguments:
+                shuffle_argument_indices(samples)
+            if self.sort_by_length: 
+                samples = sort_by_padding(self.instances, 
+                                          self.iterator._sorting_keys,
+                                          self.iterator.vocab,
+                                          self.iterator._padding_noise,
+                                          reverse=True)
             batch = Batch(samples)
             batch.index_instances(self.iterator.vocab)
             batch = batch.as_tensor_dict()

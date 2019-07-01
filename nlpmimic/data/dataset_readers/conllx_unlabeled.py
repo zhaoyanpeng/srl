@@ -1,4 +1,4 @@
-from typing import Any, Type, TypeVar, Dict, List, Sequence, Iterable, Optional, Tuple
+from typing import Callable, Iterator, Any, Type, TypeVar, Dict, List, Sequence, Iterable, Optional, Tuple
 import itertools 
 import inspect 
 import logging
@@ -7,6 +7,7 @@ import re, sys
 from overrides import overrides
 from collections import Counter
 
+from allennlp.common import Tqdm
 from allennlp.common.checks import ConfigurationError
 from allennlp.common.file_utils import cached_path
 from allennlp.common.from_params import remove_optional
@@ -22,6 +23,20 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
+class _LazyInstances(Iterable):
+    """
+    An ``Iterable`` that just wraps a thunk for generating instances and calls it for
+    each call to ``__iter__``.
+    """
+    def __init__(self, instance_generator: Callable[[], Iterator[Instance]]) -> None:
+        super().__init__()
+        self.instance_generator = instance_generator
+
+    def __iter__(self) -> Iterator[Instance]:
+        instances = self.instance_generator()
+        if isinstance(instances, list):
+            raise ConfigurationError("For a lazy dataset reader, _read() must return a generator")
+        return instances
 
 @DatasetReader.register("conllx_unlabeled")
 class ConllxUnlabeledDatasetReader(DatasetReader):
@@ -124,6 +139,29 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             return False
         else:
             return True
+    
+    def read(self, 
+             context_path: str, 
+             appendix_path: str, 
+             appendix_type: str = _DEFAULT_APPENDIX_TYPE, 
+             firstk: int = sys.maxsize) -> Iterable[Instance]:
+        
+        lazy = getattr(self, 'lazy', None)
+        if lazy is None:
+            logger.warning("DatasetReader.lazy is not set, "
+                           "did you forget to call the superclass constructor?")
+
+        if lazy:
+            return _LazyInstances(lambda: iter(self._read(
+                context_path, appendix_path, appendix_type, firstk)))
+        else:
+            instances = self._read(context_path, appendix_path, appendix_type, firstk)
+            if not isinstance(instances, list):
+                instances = [instance for instance in Tqdm.tqdm(instances)]
+            if not instances:
+                raise ConfigurationError("No instances were read from the given filepath {}. "
+                                         "Is the path correct?".format(file_path))
+            return instances
 
     @overrides
     def _read(self, 
