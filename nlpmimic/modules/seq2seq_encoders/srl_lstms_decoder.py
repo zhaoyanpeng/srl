@@ -49,7 +49,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
         
         self._dropout = torch.nn.Dropout(dropout)
     
-    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor) -> None: 
+    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor, nlabel: int = None) -> None: 
         self._output_dim = output_dim 
         self._lemma_embedder_weight = lemma_embedder_weight 
         

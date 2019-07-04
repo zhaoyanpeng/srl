@@ -7,8 +7,8 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_0200_lhood_pd.5_bil.1"
-param_name="sri_lhood.jsonnet"
+model_name="sri_lhood_nyt_toy"
+param_name="sri_lhood_nyt_toy.jsonnet"
 model_path=$droot/model
 
 library="nlpmimic"

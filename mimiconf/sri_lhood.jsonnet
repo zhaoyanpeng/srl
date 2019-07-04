@@ -23,9 +23,13 @@
     "reader_mode": "basic",
     "validation_ontraining_data": false,
 
-    "train_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/train.verb",
-    "test_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/test.verb",
-    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/devel.verb",
+    "train_data_path": "/disk/scratch1/s1847450/data/conll09/separated/train.verb",
+    "test_data_path": "/disk/scratch1/s1847450/data/conll09/separated/test.verb",
+    "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb",
+
+    //"train_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/train.verb",
+    //"test_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/test.verb",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.word/v20.0/devel.verb",
 
     "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     "datasets_for_vocab_creation": ["vocab"],
@@ -36,7 +40,8 @@
             "decoder": {
                 "type": "srl_basic_decoder",
                 "input_dim": 200, // predicate + label,
-                "dense_layer_dims": [450, 600, 750, 900, 1050],
+                "bilinear_type": 1, 
+                "dense_layer_dims": [200],
                 "dropout": 0.1,
             },
         },
@@ -61,6 +66,7 @@
             },
             "predt_embedder": {
                 "embedding_dim": 100,
+                "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
                 "vocab_namespace": "predicates",
                 "trainable": true, 
                 "sparse": false 
@@ -69,7 +75,10 @@
             "tunable_tau": false,
             "psign_dim": 100,
             "seq_projection_dim": null,
-            "embedding_dropout": 0.1,
+            "token_dropout": 0.1,
+            "lemma_dropout": 0.1,
+            "label_dropout": 0.1,
+            "predt_dropout": 0.5,
             "suppress_nonarg": true,
         },
 
@@ -79,7 +88,7 @@
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 128 
+        "batch_size": 64 
     },
     "trainer": {
         "type": "sri_vae_lemma",
@@ -91,7 +100,7 @@
         "num_serialized_models_to_keep": 3,
         "validation_metric": "+f1-measure-overall",
         //"validation_metric": "-loss",
-        "cuda_device": 2,
+        "cuda_device": 1,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

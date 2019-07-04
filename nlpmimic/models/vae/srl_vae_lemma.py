@@ -37,7 +37,7 @@ class SrlLemmaAutoencoder(Model):
         if self.encoder is not None:
             self.encoder.add_parameters(nlabel)
         if self.decoder is not None:
-            self.decoder.add_parameters(nlemma, lemma_embedder_weight)
+            self.decoder.add_parameters(nlemma, lemma_embedder_weight, nlabel=nlabel)
 
     def forward(self, 
                 mask: torch.Tensor,
@@ -51,7 +51,11 @@ class SrlLemmaAutoencoder(Model):
         # reconstruction (argument) loss (batch_size,)
         if embedded_edges is None: # stupid compatibility
             embedded_edges = embedded_nodes[:, 1:, :]
-        logits = self.decoder(None, embedded_edges, embedded_predicates)
+
+        if self.decoder.signature == 'srl_basic_decoder':
+            logits = self.decoder(None, embedded_edges, embedded_predicates, edge_types)
+        else:
+            logits = self.decoder(None, embedded_edges, embedded_predicates)
         self.logits = logits.squeeze(0)
 
         self.kldistance = 0

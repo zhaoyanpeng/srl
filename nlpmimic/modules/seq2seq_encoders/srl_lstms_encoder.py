@@ -1,16 +1,17 @@
-from typing import List 
+from typing import Set, Dict, List, TextIO, Optional, Any
+import numpy as np
 import torch
+import torch.nn.functional as F
 
 from allennlp.modules import Seq2SeqEncoder
 
-@Seq2SeqEncoder.register("srl_graph_decoder")
-class SrlGraphDecoder(Seq2SeqEncoder):
-
+@Seq2SeqEncoder.register("srl_lstms_encoder")
+class SrlLstmsEncoder(Seq2SeqEncoder):
     def __init__(self, 
                  input_dim: int, 
                  dense_layer_dims: List[int],
                  dropout: float = 0.0) -> None:
-        super(SrlGraphDecoder, self).__init__()
+        super(SrlLstmsEncoder, self).__init__()
         self.signature = 'decoder'
 
         self._input_dim = input_dim 
@@ -25,39 +26,24 @@ class SrlGraphDecoder(Seq2SeqEncoder):
         
         self._dropout = torch.nn.Dropout(dropout)
     
-    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor, nlabel: int = None) -> None:
+    def add_parameters(self, output_dim: int) -> None:
         self._output_dim = output_dim 
-        #self._lemma_embedder_weight = lemma_embedder_weight 
-
         label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
         setattr(self, 'label_projection_layer', label_layer)
 
     def forward(self, 
-                z: torch.Tensor,
                 embedded_edges: torch.Tensor,
-                embedded_predicates: torch.Tensor) -> torch.Tensor:
+                embedded_predicates: torch.Tensor = None) -> torch.Tensor:
         nnode = embedded_edges.size(1)
-        embedded_nodes = []
+        # (batch_size, nnode, dim)
+        embedded_nodes = embedded_edges 
+        if embedded_predicates is not None:
+            embedded_predicates = embedded_predicates.expand(-1, nnode, -1)
+            embedded_nodes = torch.cat([embedded_nodes, embedded_predicates], -1)
 
-        if z is not None:
-            nsample = z.size(1) 
-            # (nsample, batch_size, nnode, dim)
-            z = z.transpose(0, 1).unsqueeze(2).expand(-1, -1, nnode, -1) 
-            embedded_nodes.append(z)
-        else:
-            nsample = 1
-
-        embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
-        embedded_nodes.append(embedded_edges)
-
-        if embedded_predicates is not None: # must not be None
-            embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
-            embedded_nodes.append(embedded_predicates)
-
-        embedded_nodes = torch.cat(embedded_nodes, -1)
         embedded_nodes = self.multi_dense(embedded_nodes)
-
         logits = self.label_projection_layer(embedded_nodes)
+        
         return logits 
     
     def multi_dense(self, embedded_nodes: torch.Tensor) -> torch.Tensor:

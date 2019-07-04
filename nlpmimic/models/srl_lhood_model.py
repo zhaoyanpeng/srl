@@ -40,11 +40,11 @@ class VaeSemanticRoleLabeler(Model):
         self.straight_through = straight_through
 
         output_dim = self.vocab.get_vocab_size("lemmas")
+        lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
         if self.sim_loss_type is not None:
             output_dim = self.classifier.lemma_embedder.get_output_dim()
-            lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
             self.lemma_vectors = lemma_embedder.weight
-        self.autoencoder.add_parameters(self.classifier.nclass, output_dim, None)
+        self.autoencoder.add_parameters(self.classifier.nclass, output_dim, lemma_embedder.weight)
 
         self.tau = self.classifier.tau
         initializer(self)

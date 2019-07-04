@@ -29,6 +29,7 @@
                 //"input_dim": 7, // 3 + 2 + 2
                 "input_dim": 4, // 2 + 2
                 "dense_layer_dims": [5, 5],
+                "bilinear_type": 1 
             },
         },
 
@@ -78,7 +79,10 @@
             "tunable_tau": false,
             "psign_dim": 2,
             "seq_projection_dim": null,
-            "embedding_dropout": 0.0,
+            "token_dropout": 0.1,
+            "lemma_dropout": 0.1,
+            "label_dropout": 0.1,
+            "predt_dropout": 0.1,
             "suppress_nonarg": true,
         },
 
@@ -87,13 +91,13 @@
         "alpha": 0.5,
         "nsampling": 2,
         //"coupled_loss": true,
-        "sim_loss_type": "cosine",
+        //"sim_loss_type": "cosine",
         "straight_through": true,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 1 
+        "batch_size": 2 
     },
     "trainer": {
         "type": "sri_vae_lemma",

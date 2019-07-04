@@ -58,10 +58,10 @@
     "test_data_path": "/disk/scratch1/s1847450/data/conll09/separated/test.verb",
     "validation_data_path": "/disk/scratch1/s1847450/data/conll09/separated/devel.verb",
 
-    //"train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/v100.0/nytimes.verb.ctx",
-    //"train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/v100.0/nytimes.verb.sel",
-    "train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.only/nytimes.45.only",
-    "train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.only/nytimes.45.verb.only",
+    "train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.word/v100.0/nytimes.verb.ctx",
+    "train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.word/v100.0/nytimes.verb.sel",
+    //"train_dx_context_path":  "/disk/scratch1/s1847450/data/nytimes/morph.only/nytimes.45.only",
+    //"train_dx_appendix_path": "/disk/scratch1/s1847450/data/nytimes/morph.only/nytimes.45.verb.only",
 
     "vocab_src_path": "/disk/scratch1/s1847450/data/conll09/separated/vocab.src",
     "datasets_for_vocab_creation": ["vocab"],
@@ -71,9 +71,9 @@
             "type": "srl_lemma_ae",
             "decoder": {
                 "type": "srl_basic_decoder",
-                "input_dim": 200, // predicate + label,
-                "b_use_bilinear": true,
-                "dense_layer_dims": [200],
+                "input_dim": 4, // predicate + label,
+                "b_use_bilinear": false,
+                "dense_layer_dims": [5],
                 "dropout": 0.1,
             },
         },
@@ -83,29 +83,27 @@
                 "token_embedders": {
                     "lemmas": {
                         "type": "embedding",
-                        "embedding_dim": 100,
-                        "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
+                        "embedding_dim": 2,
                         "vocab_namespace": "lemmas",
                         "trainable": false 
                     }
                 }
             },
             "label_embedder": {
-                "embedding_dim": 100,
+                "embedding_dim": 2,
                 "vocab_namespace": "srl_tags",
                 "trainable": true,
                 "sparse": false 
             },
             "predt_embedder": {
-                "embedding_dim": 100,
-                "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
+                "embedding_dim": 2,
                 "vocab_namespace": "predicates",
                 "trainable": true, 
                 "sparse": false 
             },
             "tau": 1.0,
             "tunable_tau": false,
-            "psign_dim": 100,
+            "psign_dim": 2,
             "seq_projection_dim": null,
             "token_dropout": 0.1,
             "lemma_dropout": 0.1,
@@ -119,19 +117,19 @@
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["tokens", "num_tokens"]],
-        "batch_size": 1024 
+        "batch_size": 100 
     },
     "trainer": {
         "type": "sri_vae_lemma",
-        "num_epochs": 1000,
+        "num_epochs": 1,
         "grad_norm": 5.0,
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 3,
+        "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
         //"validation_metric": "-loss",
-        "cuda_device": 1,
+        "cuda_device": 2,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

@@ -35,8 +35,9 @@ class TestConll2003Reader(NlpMimicTestCase):
         ofile = ifile + '.moved' 
         """
 
-        fname = 'devel.verb'
+        fname = 'train.verb.morph.only'
         droot = "/disk/scratch1/s1847450/data/conll09/separated/"
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
         ifile = droot + fname
         ofile = droot + fname + '.moved'
         
