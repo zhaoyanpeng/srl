@@ -62,7 +62,8 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
     def forward(self, 
                 z: torch.Tensor,
                 embedded_labels: torch.Tensor,
-                embedded_predicates: torch.Tensor) -> torch.Tensor:
+                embedded_predicates: torch.Tensor,
+                nodes_contexts: torch.Tensor = None) -> torch.Tensor:
         batch_size, ntimestep, _ = embedded_labels.size()
 
         if not self._b_ignore_z and z is not None: # (batch_size, nsample, dim)
@@ -99,9 +100,13 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
         if self._always_use_predt:
             embedded_args = torch.zeros_like(embedded_predicates)
         for i in range(ntimestep):
+            if nodes_contexts is not None:
+                embedded_args = nodes_contexts[:, i, :]
+
             input_i = torch.cat([embedded_predicates, embedded_args, embedded_labels[:, i, :]], -1) 
             hx = self._rnn(input_i, hx) 
             embedded_args, logits_i = self.customize_hidden_states(hx)
+
             logits.append(logits_i)
             if not self._always_use_predt:
                 embedded_predicates = dummy 
@@ -109,14 +114,16 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
 
         return logits 
    
-    def customize_hidden_states(self, hidden_states: torch.Tensor):
+    def customize_hidden_states(self, hidden_states: torch.Tensor, nodes_contexts: torch.Tensor = None):
         hidden_states = self.multi_dense(hidden_states)
         logits = self.label_projection_layer(hidden_states)
-        gumbel_hard, gumbel_soft, _ = gumbel_softmax(logits)
 
-        label_relaxed = gumbel_hard if self._straight_through else gumbel_soft
-        hidden_states = torch.matmul(label_relaxed, self._lemma_embedder_weight) 
-        
+        hidden_states = None
+        if nodes_contexts is None:
+            gumbel_hard, gumbel_soft, _ = gumbel_softmax(logits)
+            label_relaxed = gumbel_hard if self._straight_through else gumbel_soft
+            hidden_states = torch.matmul(label_relaxed, self._lemma_embedder_weight) 
+
         return hidden_states, logits
 
     def multi_dense(self, embedded_nodes: torch.Tensor) -> torch.Tensor:

@@ -27,7 +27,7 @@ from nlpmimic.training.util import RealDataLazyLoader, DataSampler, DataLazyLoad
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-@TrainerBase.register("sri_vae_lemma")
+@TrainerBase.register("sri_vae_finer")
 class VaeSrlTrainer(Trainer):
     def __init__(self,
                  model: Model,
@@ -60,6 +60,7 @@ class VaeSrlTrainer(Trainer):
                  use_wgan: bool = False,
                  clip_val: float = 5.0,
                  sort_by_length: bool = False,
+                 shuffle_arguments: bool = False,
                  consecutive_update: bool = False,
                  dis_max_nbatch: int = 0,
                  gen_max_nbatch: int = 0,
@@ -144,16 +145,20 @@ class VaeSrlTrainer(Trainer):
         self.gen_max_nbatch = gen_max_nbatch
 
         if self.train_data is not None:
-            self.data_sampler = DataLazyLoader(self.train_data, self.iterator, self.sort_by_length)
+            self.data_sampler = DataLazyLoader(
+                self.train_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
 
         if self.train_dx_data is not None:
             if not isinstance(self.train_dx_data, list):
-                self.noun_sampler = RealDataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+                self.noun_sampler = RealDataLazyLoader(
+                    self.train_dx_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
             else:
-                self.noun_sampler = DataLazyLoader(self.train_dx_data, self.iterator, self.sort_by_length)
+                self.noun_sampler = DataLazyLoader(
+                    self.train_dx_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
 
         if self.train_dy_data is not None:
-            self.verb_sampler = DataSampler(self.train_dy_data, self.iterator, self.sort_by_length) 
+            self.verb_sampler = DataSampler(
+                self.train_dy_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments) 
 
     def batch_loss(self, batch, 
                    training: bool = False, 
@@ -227,8 +232,8 @@ class VaeSrlTrainer(Trainer):
             loss, ce_loss, kl_loss, L, L_u, H, C, LL, KL = self.batch_loss(
                                         noun_batch, 
                                         training=True, 
-                                        retrive_crossentropy = True, 
-                                        supervisely_training = True,
+                                        retrive_crossentropy = False, 
+                                        supervisely_training = False,
                                         peep_prediction=peep)
 
             if ce_loss is not None:
@@ -568,6 +573,7 @@ class VaeSrlTrainer(Trainer):
 
         # process input data
         sort_by_length = params.pop("sort_by_length", False)
+        shuffle_arguments = params.pop("shuffle_arguments", False)
         
         # parameters for wgan
         clip_val = params.pop("clip_val", 0.01)
@@ -665,6 +671,7 @@ class VaeSrlTrainer(Trainer):
                    use_wgan = use_wgan,
                    clip_val = clip_val,
                    sort_by_length = sort_by_length,
+                   shuffle_arguments = shuffle_arguments,
                    consecutive_update = consecutive_update,
                    dis_max_nbatch = dis_max_nbatch,
                    gen_max_nbatch = gen_max_nbatch,

@@ -13,6 +13,7 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
 class TestConll2003Reader(NlpMimicTestCase):
     
+    @pytest.mark.skip(reason="mute")
     def test_move_head(self):
         ofile = min_valid_lemmas = valid_srl_labels = None
         conll_reader = Conll2009DatasetReader(lazy=False, 
@@ -35,7 +36,7 @@ class TestConll2003Reader(NlpMimicTestCase):
         ofile = ifile + '.moved' 
         """
 
-        fname = 'train.verb.morph.only'
+        fname = 'train.noun'
         droot = "/disk/scratch1/s1847450/data/conll09/separated/"
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
         ifile = droot + fname
@@ -64,10 +65,15 @@ class TestConll2003Reader(NlpMimicTestCase):
         
 
 
-    @pytest.mark.skip(reason="mute")
+    #@pytest.mark.skip(reason="mute")
     def test_read_from_file(self):
         valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
                             "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"]
+        
+        valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
+                            "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
+                            "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
+
         valid_srl_labels = set(valid_srl_labels)
         droot = "/disk/scratch1/s1847450/data/conll09/separated/"
         ofile = droot + 'all.moved.arg.vocab' 
@@ -85,18 +91,20 @@ class TestConll2003Reader(NlpMimicTestCase):
                                               allow_null_predicate = False)
 
         
-        word = 'v20.0' 
-        name = 'train.verb'
-        droot = "/disk/scratch1/s1847450/data/conll09/morph.word/"
-        ifile = droot + '{}/{}'.format(word, name)
+        #word = 'v20.0' 
+        #name = 'train.verb'
+        #droot = "/disk/scratch1/s1847450/data/conll09/morph.word/"
+        #ifile = droot + '{}/{}'.format(word, name)
 
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
         #ifile = droot + 'noun.bit'
 
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ifile = droot + 'noun.bit'
+
         #ifile = droot + 'vocab.src'
         instances = conll_reader.read(ifile)
 
-        """
         instances = ensure_list(instances)
 
         lemma_dict = Counter()
@@ -113,4 +121,3 @@ class TestConll2003Reader(NlpMimicTestCase):
         
         print('\n|vocab of lemmas| is {}'.format(len(conll_reader.lemma_set)))
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
-        """

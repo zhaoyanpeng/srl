@@ -19,6 +19,7 @@ from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_lo
 from allennlp.nn.util import get_lengths_from_binary_sequence_mask
 
 from nlpmimic.nn.util import gumbel_softmax
+from nlpmimic.training.metrics import ClusteringBasedF1Measure 
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
 @Model.register("srl_vae_classifier")
@@ -41,6 +42,7 @@ class SrlVaeClassifier(Model):
                  label_dropout: float = 0.,
                  predt_dropout: float = 0.,
                  label_smoothing: float = None,
+                 metric_type: str = 'dependency',
                  ignore_span_metric: bool = False,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlVaeClassifier, self).__init__(vocab, regularizer)
@@ -83,9 +85,13 @@ class SrlVaeClassifier(Model):
                 Linear(self.seq_encoder.get_output_dim(), self.seq_projection_dim)
         
         self.ignore_span_metric = ignore_span_metric
-        self.span_metric = DependencyBasedF1Measure(vocab, 
-                                                    unlabeled_vals = self.suppress_nonarg,
-                                                    tag_namespace="srl_tags")
+
+        params = {'unlabeled_vals': self.suppress_nonarg, 'tag_namespace': "srl_tags"}
+        if metric_type == 'dependency':
+            self.span_metric = DependencyBasedF1Measure(vocab, **params) 
+        elif metric_type == 'clustering':
+            self.span_metric = ClusteringBasedF1Measure(vocab, **params) 
+
         self._label_smoothing = label_smoothing
 
     def forward(self, 

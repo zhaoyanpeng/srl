@@ -5,6 +5,7 @@ from nlpmimic.models.srl_graph_model import GraphSemanticRoleLabeler
 
 from nlpmimic.models.vae.srl_vae_lstms import SrlLstmsAutoencoder
 from nlpmimic.models.vae.srl_vae_basic import SrlBasicAutoencoder
+from nlpmimic.models.vae.srl_vae_finer import SrlFinerAutoencoder
 from nlpmimic.models.vae.srl_vae_lemma import SrlLemmaAutoencoder
 from nlpmimic.models.vae.srl_vae_graph import SrlGraphAutoencoder
 from nlpmimic.models.vae.srl_vae_classifier import SrlVaeClassifier

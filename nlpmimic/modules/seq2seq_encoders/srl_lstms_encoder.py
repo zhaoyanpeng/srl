@@ -33,7 +33,8 @@ class SrlLstmsEncoder(Seq2SeqEncoder):
 
     def forward(self, 
                 embedded_edges: torch.Tensor,
-                embedded_predicates: torch.Tensor = None) -> torch.Tensor:
+                embedded_predicates: torch.Tensor = None,
+                nodes_contexts: torch.Tensor = None) -> torch.Tensor:
         nnode = embedded_edges.size(1)
         # (batch_size, nnode, dim)
         embedded_nodes = embedded_edges 

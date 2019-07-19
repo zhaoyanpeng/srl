@@ -35,7 +35,8 @@ class SrlGraphDecoder(Seq2SeqEncoder):
     def forward(self, 
                 z: torch.Tensor,
                 embedded_edges: torch.Tensor,
-                embedded_predicates: torch.Tensor) -> torch.Tensor:
+                embedded_predicates: torch.Tensor,
+                nodes_contexts: torch.Tensor = None) -> torch.Tensor:
         nnode = embedded_edges.size(1)
         embedded_nodes = []
 
@@ -46,6 +47,10 @@ class SrlGraphDecoder(Seq2SeqEncoder):
             embedded_nodes.append(z)
         else:
             nsample = 1
+
+        if nodes_contexts is not None:
+            nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
+            embedded_nodes.append(nodes_contexts)
 
         embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
         embedded_nodes.append(embedded_edges)

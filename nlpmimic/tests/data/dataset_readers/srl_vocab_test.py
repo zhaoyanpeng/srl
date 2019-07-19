@@ -13,7 +13,7 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
     
 class TestConll2009Reader():
-    """ 
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     #@pytest.mark.parametrize("feature_labels", [['pos'], ['dep']])
     #def test_read_from_file(self, lazy, feature_labels):
@@ -49,9 +49,8 @@ class TestConll2009Reader():
         
         print('\n|vocab of lemmas| is {}'.format(len(conll_reader.lemma_set)))
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
-    """
 
-    """
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (False,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocabulary_file(self, lazy, move):
@@ -86,11 +85,11 @@ class TestConll2009Reader():
         
         print('\n|vocab of lemmas| is {}'.format(len(conll_reader.lemma_set)))
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
-    """
 
-    """
+
+    #@pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (False,))
-    @pytest.mark.parametrize("move", (False,))
+    @pytest.mark.parametrize("move", (True,))
     def test_read_from_file(self, lazy, move):
         conll_reader = Conll2009DatasetReader(lazy=lazy, 
                                               feature_labels=['pos', 'dep'], 
@@ -102,8 +101,11 @@ class TestConll2009Reader():
         
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
         #ifile = droot + 'noun.bit'
+
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ifile = droot + 'noun.vocab.src'
         
-        ofile = droot + 'all.moved.arg.vocab' 
+        ofile = droot + 'noun.all.moved.arg.vocab' 
         instances = conll_reader.read(ifile)
         instances = ensure_list(instances)
         
@@ -118,17 +120,19 @@ class TestConll2009Reader():
             for idx, (label, lemma) in enumerate(zip(labels, lemmas)):
                 if label == Conll2009DatasetReader._EMPTY_LABEL:
                     continue 
+                """
                 if lemma == 'be':
                     for a, b in zip(lemmas, labels):
                         print(a, b)
                     import sys
                     sys.exit(0)
+                """
                 arg_dict[lemma] += 1 
         with open(ofile, 'w') as fw:
             for k, v in arg_dict.most_common():
                 fw.write('{}\t{}\n'.format(k, v))
-    """
 
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (False,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocabulary_file(self, lazy, move):
