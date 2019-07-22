@@ -32,6 +32,19 @@ class SrlGraphDecoder(Seq2SeqEncoder):
         label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
         setattr(self, 'label_projection_layer', label_layer)
 
+    def kernel(self, ctx_lemmas, ctx_labels, role, pred):
+        p_prod_r, p_diff_r = pred * role, pred - role 
+        ctx_p_prod_r, ctx_p_diff_r = pred * ctx_labels, pred - ctx_labels 
+        ctx_l_prod_r, ctx_l_diff_r = ctx_lemmas * ctx_labels, ctx_lemmas - ctx_labels 
+        
+        y1 = p_prod_r * ctx_p_diff_r
+        y2 = p_diff_r * ctx_p_prod_r
+        y3 = p_prod_r * ctx_l_diff_r
+        y4 = p_diff_r * ctx_l_prod_r
+
+        features = [role, pred, p_prod_r, p_diff_r, y1, y2, y3, y4]
+        return features
+
     def forward(self, 
                 z: torch.Tensor,
                 embedded_edges: torch.Tensor,
@@ -48,16 +61,16 @@ class SrlGraphDecoder(Seq2SeqEncoder):
         else:
             nsample = 1
 
-        if nodes_contexts is not None:
-            nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
-            embedded_nodes.append(nodes_contexts)
-
         embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
-        embedded_nodes.append(embedded_edges)
+        #embedded_nodes.append(embedded_edges)
+        embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
+        #embedded_nodes.append(embedded_predicates)
 
-        if embedded_predicates is not None: # must not be None
-            embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
-            embedded_nodes.append(embedded_predicates)
+        nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
+        ctx_lemmas, ctx_labels = torch.chunk(nodes_contexts, 2, -1) 
+        #embedded_nodes.append(nodes_contexts)
+        
+        embedded_nodes = self.kernel(ctx_lemmas, ctx_labels, embedded_edges, embedded_predicates)
 
         embedded_nodes = torch.cat(embedded_nodes, -1)
         embedded_nodes = self.multi_dense(embedded_nodes)

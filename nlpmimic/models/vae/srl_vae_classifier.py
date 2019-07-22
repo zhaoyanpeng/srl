@@ -206,6 +206,12 @@ class SrlVaeClassifier(Model):
         encoded_labels = self.label_dropout(encoded_labels)
         return encoded_labels
 
+    def encode_global_predt(self, token: str = '_', device=None):
+        predt_idx = self.vocab.get_token_index("_", namespace="predicates")
+        predt_idx = torch.tensor(predt_idx, device=device)
+        embedded_predt = self.predt_embedder(predt_idx)
+        return embedded_predt
+
     def encode_predt(self, predicates: torch.Tensor, predicate_sign: torch.LongTensor):
         embedded_predicates = self.predt_embedder(predicates)
         # (batch_size, length, dim) -> (batch_size, dim, length)
@@ -217,6 +223,19 @@ class SrlVaeClassifier(Model):
         embedded_predicates = embedded_predicates.transpose(1, 2)
         embedded_predicates = self.predt_dropout(embedded_predicates)
         return embedded_predicates
+
+    def encode_lemma(self, lemmas: Dict[str, torch.LongTensor], arg_indices: torch.LongTensor):
+        embedded_lemmas = self.lemma_embedder(lemmas)
+
+        if arg_indices is None:
+            return embedded_lemmas
+
+        lemma_dim = embedded_lemmas.size()[-1]
+        arg_indices = arg_indices.unsqueeze(-1).expand(-1, -1, lemma_dim)
+        
+        embedded_arg_lemmas = torch.gather(embedded_lemmas, 1, arg_indices)
+        embedded_arg_lemmas = self.lemma_dropout(embedded_arg_lemmas)  
+        return embedded_arg_lemmas
 
     def encode_args(self,
                     lemmas: Dict[str, torch.LongTensor],

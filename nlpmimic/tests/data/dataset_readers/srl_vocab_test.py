@@ -87,7 +87,7 @@ class TestConll2009Reader():
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
 
 
-    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (False,))
     @pytest.mark.parametrize("move", (True,))
     def test_read_from_file(self, lazy, move):
@@ -132,6 +132,42 @@ class TestConll2009Reader():
             for k, v in arg_dict.most_common():
                 fw.write('{}\t{}\n'.format(k, v))
 
+    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.parametrize("lazy", (True,))
+    @pytest.mark.parametrize("move", (True,))
+    def test_vocab_file(self, lazy, move):
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ofile = droot + 'verb.all.moved.arg.vocab' 
+        pfile = droot + "verb.all.predicate.vocab"
+
+        conll_reader = Conll2009DatasetReader(lazy=lazy, 
+                                              lemma_file = ofile,
+                                              lemma_use_firstk = 5,
+                                              predicate_file = pfile,
+                                              predicate_use_firstk = 1500,
+                                              feature_labels=['pos', 'dep'], 
+                                              move_preposition_head=move,
+                                              instance_type='srl_graph',
+                                              allow_null_predicate = False)
+
+        
+
+        #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
+        #ifile = droot + 'noun.bit'
+
+        ifile = droot + 'verb.vocab.src'
+        instances = conll_reader.read(ifile)
+        instances = ensure_list(instances)
+
+        predicate_dict = Counter()
+
+        for instance in tqdm(instances):
+            predicate = instance['metadata']['predicate']
+            predicate_dict[predicate] += 1
+        
+        print('\n|vocab of predicates| is {}'.format(len(conll_reader.predicate_set)))
+        print('|vocab of predicates| is {}'.format(len(predicate_dict)))
+
     @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (False,))
     @pytest.mark.parametrize("move", (True,))
@@ -149,7 +185,13 @@ class TestConll2009Reader():
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
         #ifile = droot + 'noun.bit'
 
-        ifile = droot + 'vocab.src'
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ifile = droot + 'noun.vocab.src'
+        ofile = droot + 'noun.all.predicate.vocab'
+
+        #ifile = droot + 'vocab.src'
+
+
         instances = conll_reader.read(ifile)
         instances = ensure_list(instances)
 

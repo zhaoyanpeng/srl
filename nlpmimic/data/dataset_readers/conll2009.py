@@ -2,7 +2,7 @@ from typing import Any, Type, TypeVar, Set, Dict, List, Sequence, Iterable, Opti
 import itertools 
 import inspect 
 import logging
-import re
+import re, json
 
 from overrides import overrides
 from collections import Counter
@@ -311,6 +311,8 @@ class Conll2009DatasetReader(DatasetReader):
                  lemma_indexers: Dict[str, TokenIndexer] = None,
                  lemma_file: str = None,
                  lemma_use_firstk: int = 5000, # used as frequency when it is smaller than 100
+                 predicate_file: str = None,
+                 predicate_use_firstk: int = 1500,
                  feature_labels: Sequence[str] = (),
                  maximum_length: float = float('inf'),
                  valid_srl_labels: Sequence[str] = (),
@@ -359,7 +361,31 @@ class Conll2009DatasetReader(DatasetReader):
                 self.lemma_set = lemma_set
         except Exception as e:
             logger.info("Reading vocabulary of lemmas failed: %s", lemma_file)
-            self.lemma_set = None
+            self.predicate_set = None
+
+        try:
+            self.predicate_set = None
+            if predicate_file is not None:
+                predicate_dict = Counter()
+                with open(predicate_file, 'r') as predicates:
+                    for line in predicates:
+                        line = json.loads(line)
+                        k, v = line[0], int(line[1])
+                        predicate_dict[k] += int(v)
+                # construct vocab
+                predicate_set = set()
+                if predicate_use_firstk > 100:
+                    for idx, (k, v) in enumerate(predicate_dict.most_common()):
+                        if idx >= predicate_use_firstk: break
+                        predicate_set.add(k)
+                else:
+                    for k, v in predicate_dict.most_common():
+                        if v < predicate_use_firstk: continue
+                        predicate_set.add(k)
+                self.predicate_set = predicate_set
+        except Exception as e:
+            logger.info("Reading vocabulary of predicates failed: %s", predicate_file)
+            self.predicate_set = None
     
     def filter_lemmas(self, lemmas: List[str]) -> List[str]:
         if self.lemma_set is not None:
@@ -418,6 +444,11 @@ class Conll2009DatasetReader(DatasetReader):
                                             self.instance_type)
             else:
                 for (predicate_index, predicate, labels) in sentence.srl_frames:
+                    if self.predicate_set is not None and \
+                        predicate not in self.predicate_set:
+                        xxl += 1
+                        continue
+
                     srl_labels = list(set(labels))
                     if not self.allow_null_predicate and \
                         len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
