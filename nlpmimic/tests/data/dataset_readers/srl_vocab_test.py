@@ -13,6 +13,62 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
     
 class TestConll2009Reader():
+    
+    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.parametrize("lazy", (True,))
+    @pytest.mark.parametrize("move", (True,))
+    def test_label_file(self, lazy, move):
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ofile = droot + 'verb.all.moved.arg.vocab' 
+        pfile = droot + "verb.all.predicate.vocab"
+        
+        mlen = 80
+        marg = 7
+
+        #ofile = pfile = None 
+        #mlen = 800
+        #marg = 70
+
+
+        conll_reader = Conll2009DatasetReader(lazy=lazy, 
+                                              lemma_file = ofile,
+                                              lemma_use_firstk = 5,
+                                              predicate_file = pfile,
+                                              predicate_use_firstk = 20,
+                                              maximum_length = mlen,
+                                              valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
+                                                "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
+                                                "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
+                                              feature_labels=['pos', 'dep'], 
+                                              max_num_argument = marg,
+                                              move_preposition_head=move,
+                                              instance_type='srl_graph',
+                                              allow_null_predicate = False)
+
+        
+        ignored_labels = set(["AM-TMP", "AM-MNR", "AM-LOC", "AM-DIR"])
+
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ifile = droot + 'train.verb'
+
+        instances = conll_reader.read(ifile)
+
+        label_dict = defaultdict(int) 
+
+        for instance in tqdm(instances):
+            labels = instance['srl_frames'].labels
+            for i, label in enumerate(labels):
+                label_dict[label] += 1   
+             
+        print()
+        for k, v in label_dict.items():
+            print('{}\t{}'.format(k, v))
+
+        s = 0
+        for k in ignored_labels:
+            s += label_dict[k]
+        print('{} = {}'.format(ignored_labels, s))
+
     @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     #@pytest.mark.parametrize("feature_labels", [['pos'], ['dep']])
@@ -132,7 +188,7 @@ class TestConll2009Reader():
             for k, v in arg_dict.most_common():
                 fw.write('{}\t{}\n'.format(k, v))
 
-    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocab_file(self, lazy, move):

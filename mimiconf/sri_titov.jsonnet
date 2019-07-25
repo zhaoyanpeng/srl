@@ -5,13 +5,16 @@
     "dataset_reader":{
         "type":"conll2009",
         "maximum_length": 80,
+        //"valid_srl_labels": ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
+        //                     "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
+        //                     "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
         "valid_srl_labels": ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
-                             "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
-                             "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
+                             "AM-ADV", "AM-CAU",           "AM-DIS", "AM-EXT",  
+                             "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC"],
         "lemma_file":  "/disk/scratch1/s1847450/data/conll09/morph.only/verb.all.moved.arg.vocab",
         "lemma_use_firstk": 5,
         "predicate_file":  "/disk/scratch1/s1847450/data/conll09/morph.only/verb.all.predicate.vocab",
-        "predicate_use_firstk": 5,
+        "predicate_use_firstk": 20,
         "feature_labels": ["pos", "dep"],
         "move_preposition_head": true,
         "max_num_argument": 7,
@@ -65,7 +68,7 @@
                 "sparse": false 
             },
             "predt_embedder": {
-                "embedding_dim": 63000,
+                "embedding_dim": 51000,
                 "vocab_namespace": "predicates",
                 "trainable": true, 
                 "sparse": false 
@@ -74,7 +77,7 @@
                 "type": "stacked_bidirectional_lstm",
                 "input_size": 1124,
                 "hidden_size": 600,
-                "num_layers": 3,
+                "num_layers": 1,
                 "recurrent_dropout_probability": 0.3,
                 "use_highway": true
             },
@@ -114,10 +117,11 @@
         "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
         "shuffle_arguments": false,
-        "cuda_device": 2,
+        "cuda_device": 3,
         "optimizer": {
-            "type": "adadelta",
-            "rho": 0.95
+            //"type": "adadelta",
+            //"rho": 0.95
+            "type": "adagrad",
         },
     }
 }

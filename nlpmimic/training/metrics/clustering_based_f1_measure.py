@@ -40,6 +40,9 @@ class ClusteringBasedF1Measure(Metric):
         self._false_positives: Dict[str, int] = defaultdict(int)
         self._false_negatives: Dict[str, int] = defaultdict(int)
 
+        self._ignored_labels = set(["AM-TMP", "AM-MNR", "AM-LOC", "AM-DIR"])
+        self._ignored_labels = set() #
+
     def __call__(self,
                  predictions: torch.Tensor,
                  gold_labels: torch.Tensor,
@@ -105,7 +108,11 @@ class ClusteringBasedF1Measure(Metric):
                 for gold, induced in zip(gold_spans, predicted_spans):
                     self._iargument += 1 
                     self._gold_clusters[gold[0]].add(self._iargument)
-                    self._induced_clusters[induced[0]].add(self._iargument)
+
+                    induced_label = induced[0]
+                    if gold[0] in self._ignored_labels:
+                        induced_label = gold[0] 
+                    self._induced_clusters[induced_label].add(self._iargument)
 
         # output the last one
         #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
@@ -169,7 +176,11 @@ class ClusteringBasedF1Measure(Metric):
                 for gold, induced in zip(gold_spans, predicted_spans):
                     self._iargument += 1 
                     self._gold_clusters[gold[0]].add(self._iargument)
-                    self._induced_clusters[induced[0]].add(self._iargument)
+
+                    induced_label = induced[0]
+                    if gold[0] in self._ignored_labels:
+                        induced_label = gold[0] 
+                    self._induced_clusters[induced_label].add(self._iargument)
 
         # output the last one
         #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
@@ -186,6 +197,7 @@ class ClusteringBasedF1Measure(Metric):
         Additionally, an ``overall`` key is included, which provides the precision,
         recall and f1-measure for all spans.
         """
+        c = 0 
 
         pu = 0.
         for _, induced in self._induced_clusters.items():
@@ -194,7 +206,8 @@ class ClusteringBasedF1Measure(Metric):
                 overlap = induced & gold
                 this_pu = len(overlap) if len(overlap) > this_pu else this_pu
             pu += this_pu
-        pu /= float(self._iargument)
+        pu += c
+        pu /= (float(self._iargument) + c)
         
         co = 0.
         for _, gold in self._gold_clusters.items():
@@ -203,7 +216,8 @@ class ClusteringBasedF1Measure(Metric):
                 overlap = induced & gold
                 this_co = len(overlap) if len(overlap) > this_co else this_co
             co += this_co
-        co /= float(self._iargument)
+        co += c
+        co /= (float(self._iargument) + c)
 
         all_metrics = {}
         all_metrics["pu-overall"] = pu 

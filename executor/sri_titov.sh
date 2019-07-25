@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_titov_shared_global"
+model_name="sri_titov_shared_17_20_ada"
 param_name="sri_titov.jsonnet"
 model_path=$droot/model
 
