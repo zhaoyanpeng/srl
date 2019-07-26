@@ -183,14 +183,14 @@ class Conll2009Sentence:
         predicate = predicate if predicate is not None else kwargs['lemmas'][predicate_index]
         kwargs['predicate_lemmas'][predicate_index] = predicate 
         return cls(**kwargs)
-
-    def move_preposition_head(self, empty_label: str = 'O') -> None:
+    
+    def move_preposition_head(self, empty_label: str = 'O', moved_label: str = 'IN') -> None:
         """ Hard-coding, moving the head of a prepositional phrase from the preposition 
             to the nearest noun following the preposition.
         """ 
         for _, _, frames in self.srl_frames:
             for idx, label in reversed(list(enumerate(frames))):
-                if label != empty_label and self.pos_tags[idx] == 'IN':
+                if label != empty_label and self.pos_tags[idx] == moved_label:
                     if idx + 1 in self.head_ids[idx:]:
                         offset = self.head_ids[idx:].index(idx + 1)
                         head_idx = idx + offset 
@@ -301,7 +301,9 @@ class Conll2009DatasetReader(DatasetReader):
     _DUMMY = '_'
     _EMPTY_LABEL = 'O'
     _EMPTY_LEMMA = 'M' # masked lemma
+    _WILD_NUMBER = 'NNN'
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
+    _RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic'
     _MAX_NUM_ARGUMENT = 7 
@@ -315,8 +317,9 @@ class Conll2009DatasetReader(DatasetReader):
                  predicate_use_firstk: int = 1500,
                  feature_labels: Sequence[str] = (),
                  maximum_length: float = float('inf'),
+                 flatten_number: bool = False,
                  valid_srl_labels: Sequence[str] = (),
-                 move_preposition_head: bool = False,
+                 moved_preposition_head: List[str] = ["IN"],
                  allow_null_predicate: bool = False,
                  max_num_argument: int = 7,
                  min_valid_lemmas: float = None,
@@ -331,12 +334,13 @@ class Conll2009DatasetReader(DatasetReader):
             if label not in self._VALID_LABELS: 
                 raise ConfigurationError("unknown feature label type: {}".format(label))
         
+        self.flatten_number = flatten_number
         self.maximum_length = maximum_length
         self.valid_srl_labels = valid_srl_labels
         self.min_valid_lemmas = min_valid_lemmas
 
         self.feature_labels = set(feature_labels)
-        self.move_preposition_head = move_preposition_head
+        self.moved_preposition_head = moved_preposition_head
         self.allow_null_predicate = allow_null_predicate
         self.instance_type = instance_type
         
@@ -387,7 +391,20 @@ class Conll2009DatasetReader(DatasetReader):
             logger.info("Reading vocabulary of predicates failed: %s", predicate_file)
             self.predicate_set = None
     
-    def filter_lemmas(self, lemmas: List[str]) -> List[str]:
+    def filter_lemmas(self, lemmas: List[str], sentence: Conll2009Sentence) -> List[str]:
+        if self.flatten_number: # replace numbers with ...
+            pos_tags = sentence.pos_tags 
+            if len(pos_tags) <= 0:
+                pos_tags = sentence.predicted_pos_tags 
+            for idx, lemma in enumerate(lemmas):
+                if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                    if len(sentence.tokens) > 0:
+                        sentence.tokens[idx] = self._WILD_NUMBER 
+                    if len(sentence.lemmas) > 0:
+                        sentence.lemmas[idx] = self._WILD_NUMBER 
+                    if len(sentence.predicted_lemmas) > 0:
+                        sentence.predicted_lemmas[idx] = self._WILD_NUMBER 
+                
         if self.lemma_set is not None:
             lemmas = [lemma if lemma in self.lemma_set else self._EMPTY_LEMMA for lemma in lemmas] 
         return lemmas
@@ -414,7 +431,7 @@ class Conll2009DatasetReader(DatasetReader):
         xxl: int = 0 
         isample: int = 0
         for sentence in self._sentences(file_path): 
-            lemmas = self.filter_lemmas(sentence.lemmas)
+            lemmas = self.filter_lemmas(sentence.lemmas, sentence)
             tokens = [Token(t) for t in sentence.tokens]
             pos_tags = sentence.pos_tags
             head_ids = sentence.head_ids
@@ -422,8 +439,8 @@ class Conll2009DatasetReader(DatasetReader):
             cnt += 1
             if len(tokens) > self.maximum_length:
                 continue
-            if self.move_preposition_head:
-                sentence.move_preposition_head()
+            for head in self.moved_preposition_head:
+                sentence.move_preposition_head(moved_label=head)
 
             if not sentence.srl_frames:    
                 if not self.allow_null_predicate:

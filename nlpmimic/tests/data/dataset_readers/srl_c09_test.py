@@ -13,14 +13,15 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
 class TestConll2003Reader(NlpMimicTestCase):
     
+
     @pytest.mark.skip(reason="mute")
     def test_move_head(self):
         ofile = min_valid_lemmas = valid_srl_labels = None
-        conll_reader = Conll2009DatasetReader(lazy=False, 
+        conll_reader = Conll2009DatasetReader(lazy=True, 
                                               lemma_file = ofile,
                                               lemma_use_firstk = 5,
                                               feature_labels=['pos', 'dep'], 
-                                              move_preposition_head=True,
+                                              moved_preposition_head=['IN', 'TO'],
                                               instance_type='srl_graph',
                                               maximum_length = 2019,
                                               min_valid_lemmas = min_valid_lemmas,
@@ -36,11 +37,16 @@ class TestConll2003Reader(NlpMimicTestCase):
         ofile = ifile + '.moved' 
         """
 
-        fname = 'train.noun'
+        fname = 'train.noun.morph.only'
         droot = "/disk/scratch1/s1847450/data/conll09/separated/"
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+
+        #fname = 'verb.bit'
+        #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
+
         ifile = droot + fname
         ofile = droot + fname + '.moved'
+
         
         """
         fname = 'CoNLL2009-ST-English-train.txt'
@@ -54,7 +60,8 @@ class TestConll2003Reader(NlpMimicTestCase):
         
         with open(ofile, 'w') as fw:
             for sentence in conll_reader._sentences(ifile):
-                sentence.move_preposition_head()
+                for head in conll_reader.moved_preposition_head:
+                    sentence.move_preposition_head(moved_label=head)
                 for _, _, frame in sentence.srl_frames:
                     for i, x in enumerate(frame):
                         if x == 'O':
@@ -65,7 +72,7 @@ class TestConll2003Reader(NlpMimicTestCase):
         
 
 
-    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.skip(reason="mute")
     def test_read_from_file(self):
         valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
                             "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"]

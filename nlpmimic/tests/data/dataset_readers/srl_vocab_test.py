@@ -13,8 +13,9 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 
     
 class TestConll2009Reader():
+
     
-    #@pytest.mark.skip(reason="mute")
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
     def test_label_file(self, lazy, move):
@@ -143,50 +144,6 @@ class TestConll2009Reader():
         print('|vocab of lemmas| is {}'.format(len(lemma_dict)))
 
 
-    @pytest.mark.skip(reason="mute")
-    @pytest.mark.parametrize("lazy", (False,))
-    @pytest.mark.parametrize("move", (True,))
-    def test_read_from_file(self, lazy, move):
-        conll_reader = Conll2009DatasetReader(lazy=lazy, 
-                                              feature_labels=['pos', 'dep'], 
-                                              move_preposition_head=move,
-                                              instance_type='srl_graph',
-                                              allow_null_predicate = False)
-        droot = "/disk/scratch1/s1847450/data/conll09/separated/"
-        ifile = droot + 'vocab.src'
-        
-        #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
-        #ifile = droot + 'noun.bit'
-
-        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
-        ifile = droot + 'noun.vocab.src'
-        
-        ofile = droot + 'noun.all.moved.arg.vocab' 
-        instances = conll_reader.read(ifile)
-        instances = ensure_list(instances)
-        
-        arg_dict = Counter()
-
-        for instance in tqdm(instances):
-            lemmas = instance['metadata']['lemmas']
-            labels = instance['srl_frames'].labels
-
-            #print(labels)
-            #print(lemmas)
-            for idx, (label, lemma) in enumerate(zip(labels, lemmas)):
-                if label == Conll2009DatasetReader._EMPTY_LABEL:
-                    continue 
-                """
-                if lemma == 'be':
-                    for a, b in zip(lemmas, labels):
-                        print(a, b)
-                    import sys
-                    sys.exit(0)
-                """
-                arg_dict[lemma] += 1 
-        with open(ofile, 'w') as fw:
-            for k, v in arg_dict.most_common():
-                fw.write('{}\t{}\n'.format(k, v))
 
     @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
@@ -225,34 +182,29 @@ class TestConll2009Reader():
         print('|vocab of predicates| is {}'.format(len(predicate_dict)))
 
     @pytest.mark.skip(reason="mute")
-    @pytest.mark.parametrize("lazy", (False,))
+    @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocabulary_file(self, lazy, move):
-        droot = "/disk/scratch1/s1847450/data/conll09/separated/"
-        ofile = droot + 'all.predicate.vocab' 
-        conll_reader = Conll2009DatasetReader(lazy=lazy, 
+        conll_reader = Conll2009DatasetReader(lazy=True, 
                                               feature_labels=['pos', 'dep'], 
-                                              move_preposition_head=move,
+                                              moved_preposition_head=['IN', 'TO'],
                                               instance_type='srl_graph',
+                                              flatten_number=True,
                                               allow_null_predicate = False)
-
-        
 
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
         #ifile = droot + 'noun.bit'
 
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
-        ifile = droot + 'noun.vocab.src'
-        ofile = droot + 'noun.all.predicate.vocab'
+        ifile = droot + 'verb.vocab.src'
+        ofile = droot + 'verb.all.predicate.vocab'
 
         #ifile = droot + 'vocab.src'
 
 
         instances = conll_reader.read(ifile)
-        instances = ensure_list(instances)
 
         predicate_dict = defaultdict(dict) 
-
         for instance in tqdm(instances):
             predicate = instance['metadata']['predicate']
             predicate_sense = instance['metadata']['predicate_sense']
@@ -272,4 +224,52 @@ class TestConll2009Reader():
                 data = (k, v, predicate_dict[k])
                 json.dump(data, fw)
                 fw.write('\n')
+
+
+    @pytest.mark.parametrize("lazy", (True,))
+    @pytest.mark.parametrize("move", (True,))
+    def test_vocabulary_file(self, lazy, move):
+        conll_reader = Conll2009DatasetReader(lazy=True, 
+                                              feature_labels=['pos', 'dep'], 
+                                              moved_preposition_head=['IN', 'TO'],
+                                              instance_type='srl_graph',
+                                              flatten_number=True,
+                                              allow_null_predicate = False)
+        droot = "/disk/scratch1/s1847450/data/conll09/separated/"
+        ifile = droot + 'vocab.src'
+        
+        #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
+        #ifile = droot + 'noun.bit'
+
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        ifile = droot + 'noun.vocab.src'
+        
+        ofile = droot + 'noun.all.moved.arg.vocab' 
+        instances = conll_reader.read(ifile)
+        
+        arg_dict = Counter()
+
+        for instance in tqdm(instances):
+            lemmas = instance['metadata']['lemmas']
+            labels = instance['srl_frames'].labels
+
+            #print(labels)
+            #print(lemmas)
+            for idx, (label, lemma) in enumerate(zip(labels, lemmas)):
+                if label == Conll2009DatasetReader._EMPTY_LABEL:
+                    continue 
+                """
+                if lemma == 'be':
+                    for a, b in zip(lemmas, labels):
+                        print(a, b)
+                    import sys
+                    sys.exit(0)
+                """
+                arg_dict[lemma] += 1 
+        
+        return
+
+        with open(ofile, 'w') as fw:
+            for k, v in arg_dict.most_common():
+                fw.write('{}\t{}\n'.format(k, v))
 
