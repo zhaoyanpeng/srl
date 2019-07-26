@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from allennlp.data import Vocabulary
 from allennlp.models.model import Model
+from allennlp.modules import TextFieldEmbedder
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed 
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
@@ -21,9 +22,10 @@ class SrlFinerAutoencoder(Model):
                  ll_alpha: float = 1.0,   # ll weight
                  re_alpha: float = 0.5,   # regularizer for duplicate roles in an instance
                  nsample: int = 1,        # # of samples from the posterior distribution 
+                 generative_loss: str = 'cs', # loss type for p(a | p, r); cs: crossentropy; mm: max-margin 
+                 negative_sample: int = 10, # number of negative samples
                  label_smoothing: float = None,
                  b_use_z: bool = True,
-                 b_ctx_lemma: bool = False,
                  b_ctx_predicate: bool = False, # b: boolean value
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlFinerAutoencoder, self).__init__(vocab, regularizer)
@@ -33,9 +35,10 @@ class SrlFinerAutoencoder(Model):
         self.decoder = decoder
         self.sampler = sampler
         self.nsample = nsample
+        self._generative_loss = generative_loss
+        self._negative_sample = negative_sample
         self._label_smoothing = label_smoothing
         self._b_ctx_predicate = b_ctx_predicate
-        self._b_ctx_lemma = b_ctx_lemma
         self._b_use_z = b_use_z
         
         self.kl_alpha = kl_alpha
@@ -45,13 +48,16 @@ class SrlFinerAutoencoder(Model):
         self.kldistance = None 
         self.likelihood = None 
     
-    def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder_weight: torch.Tensor):
+    def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder: TextFieldEmbedder):
         self.nlabel = nlabel
         self.nlemma = nlemma
         if self.encoder is not None:
             self.encoder.add_parameters(nlabel)
+
+        self.lemma_embedder = lemma_embedder 
+        nlemma = self.nlemma if self._generative_loss == 'cs' else lemma_embedder.get_output_dim() 
         if self.decoder is not None:
-            self.decoder.add_parameters(nlemma, lemma_embedder_weight)
+            self.decoder.add_parameters(nlemma, lemma_embedder)
 
     def forward(self, 
                 mask: torch.Tensor,
@@ -59,8 +65,10 @@ class SrlFinerAutoencoder(Model):
                 embedded_nodes: torch.Tensor,  
                 edge_types: torch.Tensor,
                 embedded_edges: torch.Tensor,
+                ctx_lemmas: torch.Tensor,
                 edge_type_onehots: torch.Tensor = None,
                 contexts: torch.Tensor = None) -> torch.Tensor:
+        batch_size, nnode = mask.size()
         # encoding them if it is needed
         if self._b_use_z or self._b_ctx_predicate:
             z = self.encoder(mask, embedded_nodes, edge_types, edge_type_onehots)
@@ -71,25 +79,70 @@ class SrlFinerAutoencoder(Model):
         if not self._b_use_z:
             z = None
         
-        ctx_lemmas = None
-        # be aware other lemmas
-        if self._b_ctx_lemma:
-            embedded_lemmas = embedded_nodes[:, 1:, :]
-            labeled_lemmas = torch.cat([embedded_lemmas, embedded_edges], -1)
-            labeled_lemmas = labeled_lemmas * mask.unsqueeze(-1).float()
-            
-            labeled_lemmas_sum = torch.sum(labeled_lemmas, -2, keepdim=True)
-            ctx_lemmas = labeled_lemmas_sum - labeled_lemmas
+        # be aware of other lemmas p(a_i | a-i)
+        encoded_lemmas = embedded_nodes[:, 1:, :]
+        labeled_lemmas = torch.cat([encoded_lemmas, embedded_edges], -1)
+        labeled_lemmas = labeled_lemmas * mask.unsqueeze(-1).float()
+        # sum all the other labeled arguments 
+        labeled_lemmas_sum = torch.sum(labeled_lemmas, -2, keepdim=True)
+        context = labeled_lemmas_sum - labeled_lemmas
+        # ctx may be all zero, adding a context lemma 
+        divider = torch.sum(mask, -1, keepdim=True) - 1
+        divider = torch.clamp(divider, min = 1).unsqueeze(-1).float()
+        context = context / divider
 
-            divider = torch.sum(mask, -1, keepdim=True) - 1
-            divider = torch.clamp(divider, min = 1).unsqueeze(-1).float()
-            ctx_lemmas = ctx_lemmas / divider
+        context[:, :, :ctx_lemmas.size(-1)] += ctx_lemmas
+
+        mask = mask.unsqueeze(0).expand(self.nsample, -1, -1)
+        mask = mask.contiguous().view([-1, nnode])
+        # gold arguments
+        logits = self.decoder(z, embedded_edges, embedded_predicates, nodes_contexts=context)
+        logits = logits.view([-1, nnode, logits.size(-1)])
 
         # reconstruction (argument) loss (batch_size,)
-        logits = self.decoder(z, embedded_edges, embedded_predicates, nodes_contexts=ctx_lemmas)
-        llh = self._likelihood(mask, logits, node_types, average = None) 
-        self.likelihood = self.ll_alpha * llh 
+        if self._generative_loss == 'cs':   # crossentropy loss by default
+            node_types = node_types.unsqueeze(0).expand(self.nsample, -1, -1)
+            node_types = node_types.contiguous().view([-1, nnode])
 
+            llh = self._likelihood(mask, logits, node_types, average = None) 
+            llh = torch.mean(llh.view([self.nsample, batch_size]), 0)
+        elif self._generative_loss == 'mm': # max-margin loss
+            gold_lemmas = encoded_lemmas.unsqueeze(0).expand(self.nsample, -1, -1, -1)
+            gold_lemmas = gold_lemmas.contiguous().view(-1, gold_lemmas.size(-1))
+
+            logits = self.decoder(z, embedded_edges, embedded_predicates, nodes_contexts=context)
+            logits = logits.view([-1, logits.size(-1)]).unsqueeze(-2)
+
+            gold_logits = torch.bmm(logits, gold_lemmas.unsqueeze(-1))
+            gold_logits = torch.sigmoid(gold_logits).squeeze(-1).squeeze(-1)
+            
+            nsample = batch_size * nnode
+            for idx in range(self._negative_sample):
+                samples = torch.randint(0, self.nlemma - 1, (nsample,), device=node_types.device)
+                samples = samples.view(batch_size, -1)
+                samples = (samples + 1 + node_types) % self.nlemma
+                samples = {"lemmas": samples}
+
+                fake_lemmas = self.lemma_embedder(samples)
+                fake_lemmas = fake_lemmas.unsqueeze(0).expand(self.nsample, -1, -1, -1)
+                fake_lemmas = fake_lemmas.contiguous().view(-1, fake_lemmas.size(-1))
+                
+                fake_logits = torch.bmm(logits, fake_lemmas.unsqueeze(-1))
+                fake_logits = torch.sigmoid(fake_logits).squeeze(-1).squeeze(-1)
+                
+                this_loss = torch.relu(1 - gold_logits + fake_logits)
+                if idx == 0:
+                    loss = this_loss 
+                else:
+                    loss += this_loss 
+
+            loss = loss * mask.view(-1).float()
+            loss = loss.view(-1, nnode)
+            loss = loss.sum(-1) / mask.sum(-1).float()
+
+            llh = torch.mean(loss.view([self.nsample, batch_size]), 0)
+
+        self.likelihood = self.ll_alpha * llh 
         return -self.likelihood 
 
     def kld(self, posteriors, # logrithm 
@@ -99,7 +152,7 @@ class SrlFinerAutoencoder(Model):
             embedded_edges: torch.Tensor = None,
             edge_type_onehots: torch.Tensor = None,
             contexts: torch.Tensor = None) -> torch.Tensor:
-        if isinstance(self.sampler, SamplerUniform):
+        if isinstance(self.sampler, SamplerUniform): # should be the Gumbel distribution
             # priors of role labels
             nlabel = torch.tensor(self.nlabel, device=posteriors.device).float()
             pz_logs = -torch.sum(mask, -1).float() * torch.log(nlabel)

@@ -2,6 +2,7 @@ from typing import List
 import torch
 
 from allennlp.modules import Seq2SeqEncoder
+from allennlp.modules import TextFieldEmbedder
 
 @Seq2SeqEncoder.register("srl_graph_decoder")
 class SrlGraphDecoder(Seq2SeqEncoder):
@@ -25,25 +26,35 @@ class SrlGraphDecoder(Seq2SeqEncoder):
         
         self._dropout = torch.nn.Dropout(dropout)
     
-    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor, nlabel: int = None) -> None:
+    def add_parameters(self, output_dim: int, lemma_embedder: TextFieldEmbedder, nlabel: int = None) -> None:
         self._output_dim = output_dim 
-        #self._lemma_embedder_weight = lemma_embedder_weight 
-
+        #self._lemma_embedder = lemma_embedder 
+        
         label_layer = torch.nn.Linear(self._dense_layer_dims[-1], self._output_dim)
         setattr(self, 'label_projection_layer', label_layer)
 
     def kernel(self, ctx_lemmas, ctx_labels, role, pred):
         p_prod_r, p_diff_r = pred * role, pred - role 
-        ctx_p_prod_r, ctx_p_diff_r = pred * ctx_labels, pred - ctx_labels 
         ctx_l_prod_r, ctx_l_diff_r = ctx_lemmas * ctx_labels, ctx_lemmas - ctx_labels 
         
-        y1 = p_prod_r * ctx_p_diff_r
-        y2 = p_diff_r * ctx_p_prod_r
-        y3 = p_prod_r * ctx_l_diff_r
-        y4 = p_diff_r * ctx_l_prod_r
+        y1 = ctx_lemmas
+        y2 = ctx_labels
+        y3 = p_diff_r * ctx_l_prod_r
+        y4 = ctx_l_diff_r * p_prod_r
+        y5 = p_diff_r * ctx_l_diff_r
 
-        features = [role, pred, p_prod_r, p_diff_r, y1, y2, y3, y4]
+        features = [role, pred, p_prod_r, p_diff_r, y1, y2, y3, y4, y5]
         return features
+    
+    def argument_model(self):
+        """ p(a_i | a-i, p)
+        """
+        pass
+
+    def role_model(self):
+        """ p(r_i | a-i, p)
+        """
+        pass
 
     def forward(self, 
                 z: torch.Tensor,
@@ -62,13 +73,10 @@ class SrlGraphDecoder(Seq2SeqEncoder):
             nsample = 1
 
         embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
-        #embedded_nodes.append(embedded_edges)
         embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
-        #embedded_nodes.append(embedded_predicates)
 
         nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
         ctx_lemmas, ctx_labels = torch.chunk(nodes_contexts, 2, -1) 
-        #embedded_nodes.append(nodes_contexts)
         
         embedded_nodes = self.kernel(ctx_lemmas, ctx_labels, embedded_edges, embedded_predicates)
 

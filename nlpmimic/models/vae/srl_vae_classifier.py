@@ -42,6 +42,7 @@ class SrlVaeClassifier(Model):
                  label_dropout: float = 0.,
                  predt_dropout: float = 0.,
                  label_smoothing: float = None,
+                 embed_lemma_ctx: bool = False,
                  metric_type: str = 'dependency',
                  ignore_span_metric: bool = False,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -64,6 +65,13 @@ class SrlVaeClassifier(Model):
         self.minimum_tau = 1e-5 
         if tau is not None:
             self.tau = torch.nn.Parameter(torch.tensor(tau), requires_grad=tunable_tau) 
+        # another representation of lemmas
+        if embed_lemma_ctx:
+            embedder = getattr(self.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
+            nlemma, dim = embedder.weight.size() 
+            # similar to in/out embeddings
+            self.lectx_embedder = torch.nn.Embedding(nlemma, dim) 
+            torch.nn.init.xavier_normal_(self.lectx_embedder.weight)
         
         # feature space to label space
         self.suppress_nonarg = suppress_nonarg
@@ -228,6 +236,7 @@ class SrlVaeClassifier(Model):
         embedded_lemmas = self.lemma_embedder(lemmas)
 
         if arg_indices is None:
+            embedded_lemmas = self.lemma_dropout(embedded_lemmas)  
             return embedded_lemmas
 
         lemma_dim = embedded_lemmas.size()[-1]
@@ -236,6 +245,11 @@ class SrlVaeClassifier(Model):
         embedded_arg_lemmas = torch.gather(embedded_lemmas, 1, arg_indices)
         embedded_arg_lemmas = self.lemma_dropout(embedded_arg_lemmas)  
         return embedded_arg_lemmas
+
+    def encode_lemma_ctx(self, lemmas: torch.LongTensor):
+        embedded_lemmas = self.lectx_embedder(lemmas)
+        embedded_lemmas = self.lemma_dropout(embedded_lemmas)  
+        return embedded_lemmas
 
     def encode_args(self,
                     lemmas: Dict[str, torch.LongTensor],

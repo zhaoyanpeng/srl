@@ -7,6 +7,10 @@ from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 
+"""
+A basic VAE model treating only role labels as latent variables
+"""
+
 @Model.register("srl_vae_finer")
 class VaeSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
@@ -37,11 +41,90 @@ class VaeSemanticRoleLabeler(Model):
         lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
         self.autoencoder.add_parameters(self.classifier.nclass,
                                         self.vocab.get_vocab_size("lemmas"),
-                                        lemma_embedder.weight)
+                                        self.classifier.lemma_embedder)
 
         self.tau = self.classifier.tau
         initializer(self)
-    
+   
+    def supervised(self, argument_mask, arg_logits, arg_labels, embedded_nodes, ctx_lemmas, output_dict):
+        # classification loss for the labeled data
+        C = self.classifier.labeled_loss(argument_mask, arg_logits, arg_labels, average=None) 
+        # used in decoding
+        embedded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
+
+        L = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, embedded_labels, ctx_lemmas)
+
+        L, C = -torch.mean(L), torch.mean(C) 
+
+        output_dict['L'] = L 
+        output_dict['C'] = C 
+        output_dict['loss'] = L + self.alpha * C 
+        output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
+
+    def unsupervised(self, argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, ctx_lemmas, output_dict):
+        y_logs, y_ls, y_lprobs, lls, kls, uniques = [], [], [], [], [], []
+        for _ in range(self.nsampling):
+            gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
+                self.classifier.gumbel_relax(argument_mask, arg_logits)
+            # used in decoding, p(a | p, r) with continuous p (predicates) and r (roles)
+            labels_relaxed = gumbel_hard if self.straight_through else gumbel_soft
+            encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
+
+            onehots = labels_relaxed if self.continuous_label else None #  
+            L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
+                encoded_labels, ctx_lemmas, edge_type_onehots = onehots)
+            lls.append(L_y)
+            
+            # log posteriors
+            hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
+            hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
+            y_log = torch.sum(hard_lprobs, -1) # posteriors q(r | x, p, a)
+            
+            y_lprobs.append(y_log)
+
+            # TODO it is equivalent to the entropy, kl(q || c), c: constant
+            # this is not true, we are using the Gumbel distribution
+            onehots = gumbel_hard if self.kl_prior is not None else None
+            y_log, uniqueness = self.autoencoder.kld(y_log, 
+                                         mask = argument_mask, 
+                                         node_types = arg_lemmas, 
+                                         embedded_nodes = embedded_nodes, 
+                                         embedded_edges = encoded_labels, 
+                                         edge_type_onehots = onehots)
+            if uniqueness is not None:
+                uniques.append(uniqueness)
+
+            y_logs.append(y_log)
+            y_ls.append(L_y)
+
+        # samples (nsample, batch_size) 
+        y_lprobs = torch.stack(y_lprobs, 0)
+        y_logs = torch.stack(y_logs, 0)
+        y_ls = torch.stack(y_ls, 0)
+
+        # along sample dimension
+        y_logs = torch.mean(y_logs, 0)
+        y_ls = torch.mean(y_ls, 0)
+
+        if len(uniques) > 0: # loss > 0 to be minimized
+            uniques = torch.stack(uniques, 0)
+            uniques = torch.mean(uniques, 0)
+            uniques = torch.mean(uniques)
+            output_dict['kl_loss'] = uniques 
+
+        # along batch dimension
+        KL = torch.mean(y_logs) 
+        L_u = torch.mean(y_ls)
+
+        output_dict['KL'] = KL 
+        output_dict['L_u'] = L_u
+        output_dict['loss'] = -L_u + KL
+
+        lls = -torch.stack(lls, 0)
+        if (lls < 0).any():
+            raise ValueError('LL should be non-negative.') 
+        output_dict['LL'] = torch.mean(lls)
+
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
                 lemmas: Dict[str, torch.LongTensor],
@@ -57,8 +140,7 @@ class VaeSemanticRoleLabeler(Model):
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         pivot = 0 # either labeled or unlabeled data
         out_dict = self.classifier(tokens, predicate_indicators) 
-        embedded_seqs = out_dict['embedded_seqs']
-        logits, mask = out_dict['logits'], out_dict['mask']
+        embedded_seqs, logits, mask = out_dict['embedded_seqs'], out_dict['logits'], out_dict['mask']
 
         arg_logits, arg_labels, arg_lemmas = self.classifier.select_args(
             logits, srl_frames, lemmas['lemmas'], argument_indices) 
@@ -76,105 +158,21 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['ce_loss'] = self.classifier.labeled_loss(
                 argument_mask[pivot:], arg_logits[pivot:], arg_labels[pivot:])
         
-
         ### evaluation only
         if not self.training: 
             return output_dict 
         ### evaluation over
-
         
         # below we finalize all the training stuff
         embedded_nodes = self.classifier.encode_args(
             lemmas, predicates, predicate_indicators, argument_indices, embedded_seqs) 
+        lemma_ctx = self.classifier.encode_lemma_ctx(arg_lemmas)
 
         ### labeled halve
         if supervisely_training:
-            # classification loss for the labeled data
-            C = self.classifier.labeled_loss(argument_mask, arg_logits, arg_labels, average=None) 
-            # used in decoding
-            encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
-
-            L = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, arg_labels, encoded_labels)
-
-            L, C = -torch.mean(L), torch.mean(C) 
-
-            output_dict['L'] = L 
-            output_dict['C'] = C 
-            output_dict['loss'] = L + self.alpha * C 
-            output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
+            self.supervised(argument_mask, arg_logits, arg_labels, embedded_nodes, lemma_ctx, output_dict) 
         else: ### unlabled halve
-            y_logs, y_ls, y_lprobs, lls, kls, uniques = [], [], [], [], [], []
-            for _ in range(self.nsampling):
-                gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
-                    self.classifier.gumbel_relax(argument_mask, arg_logits)
-                # used in decoding, p(a | p, r) with continuous p (predicates) and r (roles)
-                labels_relaxed = gumbel_hard if self.straight_through else gumbel_soft
-                encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
-
-                onehots = labels_relaxed if self.continuous_label else None #  
-                L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
-                    encoded_labels, edge_type_onehots = onehots)
-                lls.append(L_y)
-                
-                # log posteriors
-                hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
-                hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
-                y_log = torch.sum(hard_lprobs, -1) # posteriors q(r | x, p, a)
-                
-                y_lprobs.append(y_log)
-
-                # TODO it is equivalent to the entropy, kl(q || c), c: constant
-                onehots = gumbel_hard if self.kl_prior is not None else None
-                y_log, uniqueness = self.autoencoder.kld(y_log, 
-                                             mask = argument_mask, 
-                                             node_types = arg_lemmas, 
-                                             embedded_nodes = embedded_nodes, 
-                                             embedded_edges = encoded_labels, 
-                                             edge_type_onehots = onehots)
-                if onehots is not None:
-                    uniques.append(uniqueness)
-
-                y_logs.append(y_log)
-                y_ls.append(L_y)
-
-            # samples (nsample, batch_size) 
-            y_lprobs = torch.stack(y_lprobs, 0)
-            y_logs = torch.stack(y_logs, 0)
-            y_ls = torch.stack(y_ls, 0)
-
-            if self.reweight:
-                y_probs = torch.exp(y_lprobs)
-                y_probs = y_probs.softmax(0)
-                
-                y_logs = y_logs * y_probs
-                y_logs = y_logs.sum(0)
-
-                y_ls = y_ls * y_probs
-                y_ls = y_ls.sum(0)
-            else:
-                # along sample dimension
-                y_logs = torch.mean(y_logs, 0)
-                y_ls = torch.mean(y_ls, 0)
-
-            if len(uniques) > 0: # loss > 0 to be minimized
-                uniques = torch.stack(uniques, 0)
-                uniques = torch.mean(uniques, 0)
-                uniques = torch.mean(uniques)
-                output_dict['kl_loss'] = uniques 
-            
-            # along batch dimension
-            KL = torch.mean(y_logs) 
-            L_u = torch.mean(y_ls)
-
-            output_dict['KL'] = KL 
-            output_dict['L_u'] = L_u
-            output_dict['loss'] = -L_u + KL
-
-            lls = -torch.stack(lls, 0)
-            if (lls < 0).any():
-                raise ValueError('LL should be non-negative.') 
-            output_dict['LL'] = torch.mean(lls)
-
+            self.unsupervised(argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, lemma_ctx, output_dict) 
         return output_dict 
 
     @overrides
