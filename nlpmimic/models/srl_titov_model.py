@@ -17,6 +17,7 @@ class VaeSemanticRoleLabeler(Model):
                  nsampling: int = 10,
                  kl_prior: str = None,
                  reweight: bool = True,
+                 loss_type: str = 'titov',
                  straight_through: bool = True,
                  continuous_label: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -28,6 +29,7 @@ class VaeSemanticRoleLabeler(Model):
         self.autoencoder = autoencoder
         self.feature_dim = feature_dim
         self.alpha = alpha
+        self.loss_type = 'titov'
         self.nsampling = nsampling
         self.kl_prior = kl_prior
         self.reweight = reweight
@@ -141,16 +143,24 @@ class VaeSemanticRoleLabeler(Model):
 
         gold_scores = self.compute_potential(dim, arg_lemmas, ctxs, expected_roles) 
 
-        #loss = -gold_scores * self.nsampling
         loss = -gold_scores
-        for _ in range(self.nsampling):
+        #loss = -gold_scores * self.nsampling
+        for idx in range(self.nsampling):
             nsample = ctxs.size(0)
             samples = torch.randint(0, self.nlemma - 1, (nsample,), device=ctxs.device)
             samples = samples.view(bsize, -1)
             samples = (samples + 1 + arg_lemmas) % self.nlemma
 
             fake_scores = self.compute_potential(dim, samples, ctxs, expected_roles) 
-            loss += fake_scores
+
+            if self.loss_type == 'titov':
+                loss += fake_scores
+            elif self.loss_type == 'relu':
+                this_loss = torch.relu(1 - gold_scores + fake_scores)
+                if idx == 0:
+                    loss = this_loss 
+                else:
+                    loss += this_loss 
 
         loss *= argument_mask.view(-1).float()
         #loss /= self.nsampling

@@ -5,13 +5,19 @@
     "dataset_reader":{
         "type":"conll2009",
         "maximum_length": 80,
+        //"valid_srl_labels": ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
+        //                     "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
+        //                     "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
         "valid_srl_labels": ["A0", "A1", "A2", "A3", "A4", "A5", "AA", 
-                             "AM-ADV", "AM-CAU", "AM-DIR", "AM-DIS", "AM-EXT", "AM-LOC", "AM-MNR", 
-                             "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC", "AM-TMP"],
+                             "AM-ADV", "AM-CAU",           "AM-DIS", "AM-EXT",  
+                             "AM-MOD", "AM-NEG", "AM-PNC", "AM-PRD", "AM-PRT", "AM-REC"],
         "lemma_file":  "/disk/scratch1/s1847450/data/conll09/morph.only/verb.all.moved.arg.vocab",
         "lemma_use_firstk": 5,
+        "predicate_file":  "/disk/scratch1/s1847450/data/conll09/morph.only/verb.all.predicate.vocab",
+        "predicate_use_firstk": 20,
         "feature_labels": ["pos", "dep"],
-        "move_preposition_head": true,
+        "moved_preposition_head": ["IN", "TO"],
+        "flatten_number": true,
         "max_num_argument": 7,
         "instance_type": "srl_graph",
         "token_indexers": {
@@ -28,42 +34,45 @@
     "test_data_path": "/disk/scratch1/s1847450/data/conll09/morph.only/test.verb",
     "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.only/devel.verb",
 
-    //"vocab_src_path": "/disk/scratch1/s1847450/data/conll09/morph.only/verb.vocab.src",
-    //"datasets_for_vocab_creation": ["vocab"],
-
     "model": {
         "autoencoder": {
             "type": "srl_finer_ae",
-            "kl_alpha": 0.5,
+            "kl_alpha": 0.0,
             "ll_alpha": 1.0,
-            "re_alpha": 1.0,
+            "re_alpha": 0.1,
+            "re_type": "relu",
             "b_use_z": false,
-            "b_ctx_lemma": true,
             "b_ctx_predicate": false,
-            "encoder": {
-                "type": "srl_graph_encoder",
-                "input_dim": 100, 
-                "layer_timesteps": [2, 2, 2, 2],
-                "residual_connection_layers": {"2": [0], "3": [0, 1]},
-                "dense_layer_dims": [100],
-                "node_msg_dropout": 0.3,
-                "residual_dropout": 0.3,
-                "aggregation_type": "a",
-                "combined_vectors": false,
-            },
+            "generative_loss": "maxmargin",
+            "negative_sample": 10,
+            //"encoder": {
+            //    "type": "srl_graph_encoder",
+            //    "input_dim": 100, 
+            //    "layer_timesteps": [2, 2, 2, 2],
+            //    "residual_connection_layers": {"2": [0], "3": [0, 1]},
+            //    "dense_layer_dims": [100],
+            //    "node_msg_dropout": 0.3,
+            //    "residual_dropout": 0.3,
+            //    "aggregation_type": "a",
+            //    "combined_vectors": false,
+            //},
             "decoder": {
-                //"type": "srl_graph_decoder",
+                "type": "srl_graph_decoder",
 
-                "type": "srl_lstms_decoder",
-                "always_use_predt": true,
-                "hidden_dim": 300, //  
+                //"type": "srl_lstms_decoder",
+                //"always_use_predt": true,
+                //"hidden_dim": 300, //  
 
-                "input_dim": 400,  // predicate + label (+ ctx),
-                "dense_layer_dims": [450, 600],
+                "input_dim": 900,  // predicate + label (+ ctx),
+                "dense_layer_dims": [750, 450],
                 "dropout": 0.3,
             },
             "sampler": {
-                "type": "uniform",
+                //"type": "uniform",
+
+                "type": "gumbel",
+                "tau_prior": 5,
+                "tau": 1,
             }
         },
         "classifier": {
@@ -120,6 +129,7 @@
             "label_dropout": 0.3,
             "predt_dropout": 0.3,
             "metric_type": "clustering",
+            "embed_lemma_ctx": true,
             "suppress_nonarg": true,
         },
 
@@ -129,6 +139,7 @@
         "reweight": false, 
         "straight_through": true,
         "continuous_label": true,
+        "way2relax_argmax": "sinkhorn",
         "kl_prior": "null",
     },
     "iterator": {
@@ -143,10 +154,10 @@
         "grad_clipping": 1.0,
         "patience": 200,
         "shuffle": true,
-        "num_serialized_models_to_keep": 3,
+        "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
-        "shuffle_arguments": true,
-        "cuda_device": 2,
+        "shuffle_arguments": false,
+        "cuda_device": 1,
         "optimizer": {
             "type": "adadelta",
             "rho": 0.95

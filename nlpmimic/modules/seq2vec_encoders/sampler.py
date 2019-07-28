@@ -16,6 +16,15 @@ class SamplerUniform(Seq2VecEncoder):
         super(SamplerUniform, self).__init__()
         pass
 
+@Seq2VecEncoder.register("gumbel")
+class SamplerGumbel(Seq2VecEncoder):
+    def __init__(self, tau: float, tau_prior: float):
+        super(SamplerGumbel, self).__init__()
+        self.tau = tau
+        self.tau_prior = tau_prior
+        
+        self.tau_ratio = tau_prior / tau 
+
 @Seq2VecEncoder.register("gaussian")
 class SamplerGaussian(Seq2VecEncoder):
     

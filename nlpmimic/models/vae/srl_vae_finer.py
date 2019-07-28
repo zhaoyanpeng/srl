@@ -1,4 +1,5 @@
 from typing import Tuple, Set, Dict, List, TextIO, Optional, Any
+import math
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -10,7 +11,7 @@ from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.modules import Seq2SeqEncoder, Seq2VecEncoder, TimeDistributed 
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
 
-from nlpmimic.modules.seq2vec_encoders.sampler import SamplerUniform
+from nlpmimic.modules.seq2vec_encoders.sampler import SamplerGumbel, SamplerUniform
 
 @Model.register("srl_finer_ae")
 class SrlFinerAutoencoder(Model):
@@ -21,8 +22,9 @@ class SrlFinerAutoencoder(Model):
                  kl_alpha: float = 1.0,   # kl weight
                  ll_alpha: float = 1.0,   # ll weight
                  re_alpha: float = 0.5,   # regularizer for duplicate roles in an instance
+                 re_type: str = 'relu',       # type of regularizer: kl or relu
                  nsample: int = 1,        # # of samples from the posterior distribution 
-                 generative_loss: str = 'cs', # loss type for p(a | p, r); cs: crossentropy; mm: max-margin 
+                 generative_loss: str = 'crossentropy', # loss type for p(a | p, r); cs: crossentropy; mm: max-margin 
                  negative_sample: int = 10, # number of negative samples
                  label_smoothing: float = None,
                  b_use_z: bool = True,
@@ -35,6 +37,7 @@ class SrlFinerAutoencoder(Model):
         self.decoder = decoder
         self.sampler = sampler
         self.nsample = nsample
+        self.re_type = re_type
         self._generative_loss = generative_loss
         self._negative_sample = negative_sample
         self._label_smoothing = label_smoothing
@@ -100,13 +103,13 @@ class SrlFinerAutoencoder(Model):
         logits = logits.view([-1, nnode, logits.size(-1)])
 
         # reconstruction (argument) loss (batch_size,)
-        if self._generative_loss == 'cs':   # crossentropy loss by default
+        if self._generative_loss == 'crossentropy':   # crossentropy loss by default
             node_types = node_types.unsqueeze(0).expand(self.nsample, -1, -1)
             node_types = node_types.contiguous().view([-1, nnode])
 
             llh = self._likelihood(mask, logits, node_types, average = None) 
             llh = torch.mean(llh.view([self.nsample, batch_size]), 0)
-        elif self._generative_loss == 'mm': # max-margin loss
+        elif self._generative_loss == 'maxmargin': # max-margin loss
             gold_lemmas = encoded_lemmas.unsqueeze(0).expand(self.nsample, -1, -1, -1)
             gold_lemmas = gold_lemmas.contiguous().view(-1, gold_lemmas.size(-1))
 
@@ -116,6 +119,7 @@ class SrlFinerAutoencoder(Model):
             gold_logits = torch.bmm(logits, gold_lemmas.unsqueeze(-1))
             gold_logits = torch.sigmoid(gold_logits).squeeze(-1).squeeze(-1)
             
+            loss = 0
             nsample = batch_size * nnode
             for idx in range(self._negative_sample):
                 samples = torch.randint(0, self.nlemma - 1, (nsample,), device=node_types.device)
@@ -131,10 +135,7 @@ class SrlFinerAutoencoder(Model):
                 fake_logits = torch.sigmoid(fake_logits).squeeze(-1).squeeze(-1)
                 
                 this_loss = torch.relu(1 - gold_logits + fake_logits)
-                if idx == 0:
-                    loss = this_loss 
-                else:
-                    loss += this_loss 
+                loss += this_loss
 
             loss = loss * mask.view(-1).float()
             loss = loss.view(-1, nnode)
@@ -156,24 +157,33 @@ class SrlFinerAutoencoder(Model):
             # priors of role labels
             nlabel = torch.tensor(self.nlabel, device=posteriors.device).float()
             pz_logs = -torch.sum(mask, -1).float() * torch.log(nlabel)
-            self.kldistance = self.kl_alpha * (posteriors - pz_logs)
+            kl_loss = posteriors - pz_logs
+        elif isinstance(self.sampler, SamplerGumbel):
+            #euler = 0.5772
+            ratio = self.sampler.tau_ratio
+            gamma = math.gamma(1 + ratio)
+
+            posteriors = ratio * posteriors * mask.unsqueeze(-1).float()
+            #kl_loss = mast.sum() * (-math.log(ratio) - 1 + euler * (ratio - 1)
+            kl_loss = posteriors.sum() + gamma * torch.exp(-posteriors).sum()
         else: # use estimated statistics of role labels as priors
             #self.kldistance = self.kl_alpha * posteriors 
             raise ValueError('Not supported.')
+        self.kldistance = self.kl_alpha * kl_loss
 
         uniqueness = None
         # an additional regularizer for duplicate roles
         if edge_type_onehots is not None: 
             label_onehots = edge_type_onehots * mask.unsqueeze(-1).float()
             batch_probs = torch.sum(label_onehots, 1) # along argument dim
-
-            batch_probs.clamp_(min = 1.)   # a trick to avoid nan = log(0)
-
-            kl_loss = torch.log(batch_probs) * batch_probs
-            kl_loss = torch.sum(kl_loss, 1) # along label dim
-            
+            if self.re_type == 'kl':
+                batch_probs.clamp_(min = 1.)   # a trick to avoid nan = log(0)
+                loss = torch.log(batch_probs) * batch_probs
+                loss = torch.sum(loss, 1) # along label dim
+            elif self.re_type == 'relu':
+                loss = torch.relu(batch_probs - 1).sum() 
             # loss on sentence level
-            uniqueness = self.re_alpha * kl_loss 
+            uniqueness = self.re_alpha * loss 
         return (self.kldistance, uniqueness) 
 
     def _likelihood(self,

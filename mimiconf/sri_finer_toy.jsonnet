@@ -5,7 +5,7 @@
     "dataset_reader":{
         "type":"conll2009",
         "feature_labels": ["pos", "dep"],
-        "move_preposition_head": true,
+        "moved_preposition_head": ["IN"],
         "max_num_argument": 7,
         "instance_type": "srl_graph"
     },
@@ -23,30 +23,34 @@
     "model": {
         "autoencoder": {
             "type": "srl_finer_ae",
-            "kl_alpha": 1.0,
+            "kl_alpha": 0.0,
             "ll_alpha": 1.0,
             "re_alpha": 1.0,
             "b_use_z": false,
-            "b_ctx_lemma": true,
             "b_ctx_predicate": false,
-            "encoder": {
-                "type": "srl_graph_encoder",
-                "input_dim": 2, 
-                "layer_timesteps": [2, 2, 2, 2],
-                "residual_connection_layers": {"2": [0], "3": [0, 1]},
-                "dense_layer_dims": [2],
-                "node_msg_dropout": 0.3,
-                "residual_dropout": 0.3,
-                "aggregation_type": "a",
-                "combined_vectors": false,
-            },
+            "generative_loss": "maxmargin",
+            "negative_sample": 10,
+            //"encoder": {
+            //    "type": "srl_graph_encoder",
+            //    "input_dim": 2, 
+            //    "layer_timesteps": [2, 2, 2, 2],
+            //    "residual_connection_layers": {"2": [0], "3": [0, 1]},
+            //    "dense_layer_dims": [2],
+            //    "node_msg_dropout": 0.3,
+            //    "residual_dropout": 0.3,
+            //    "aggregation_type": "a",
+            //    "combined_vectors": false,
+            //},
             "decoder": {
                 "type": "srl_graph_decoder",
-                "input_dim": 8, // 3 + 2 + 2
+                "input_dim": 18, // 3 + 2 + 2
                 "dense_layer_dims": [5, 5],
             },
             "sampler": {
-                "type": "uniform",
+                //"type": "uniform",
+                "type": "gumbel",
+                "tau_prior": 5,
+                "tau": 1,
             }
         },
 
@@ -101,6 +105,7 @@
             "label_dropout": 0.1,
             "predt_dropout": 0.1,
             "metric_type": "clustering",
+            "embed_lemma_ctx": true,
             "suppress_nonarg": true,
         },
 
@@ -110,6 +115,7 @@
         "reweight": false, 
         "straight_through": true,
         "continuous_label": true,
+        "way2relax_argmax": "sinkhorn",
         "kl_prior": "null",
     },
     "iterator": {

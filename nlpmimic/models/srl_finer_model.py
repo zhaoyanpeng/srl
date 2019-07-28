@@ -22,6 +22,7 @@ class VaeSemanticRoleLabeler(Model):
                  reweight: bool = True,
                  straight_through: bool = True,
                  continuous_label: bool = True,
+                 way2relax_argmax: str = 'softmax', # or sinkhorn
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(VaeSemanticRoleLabeler, self).__init__(vocab, regularizer)
@@ -36,6 +37,7 @@ class VaeSemanticRoleLabeler(Model):
         self.reweight = reweight
         self.straight_through = straight_through
         self.continuous_label = continuous_label
+        self.way2relax_argmax = way2relax_argmax
 
         # auto-regressive model of the decoder will need lemma weights 
         lemma_embedder = getattr(self.classifier.lemma_embedder, 'token_embedder_{}'.format('lemmas'))
@@ -61,7 +63,7 @@ class VaeSemanticRoleLabeler(Model):
         output_dict['loss'] = L + self.alpha * C 
         output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
 
-    def unsupervised(self, argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, ctx_lemmas, output_dict):
+    def unsupervised_softmax(self, argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, ctx_lemmas, output_dict):
         y_logs, y_ls, y_lprobs, lls, kls, uniques = [], [], [], [], [], []
         for _ in range(self.nsampling):
             gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
@@ -76,7 +78,8 @@ class VaeSemanticRoleLabeler(Model):
             lls.append(L_y)
             
             # log posteriors
-            hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
+            indice = torch.max(gumbel_hard, -1, keepdim=True)[1]
+            hard_lprobs = torch.gather(gumbel_soft_log, -1, indice).squeeze(-1)
             hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
             y_log = torch.sum(hard_lprobs, -1) # posteriors q(r | x, p, a)
             
@@ -120,10 +123,69 @@ class VaeSemanticRoleLabeler(Model):
         output_dict['L_u'] = L_u
         output_dict['loss'] = -L_u + KL
 
-        lls = -torch.stack(lls, 0)
-        if (lls < 0).any():
-            raise ValueError('LL should be non-negative.') 
-        output_dict['LL'] = torch.mean(lls)
+    def unsupervised_sinkhorn(self, argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, ctx_lemmas, output_dict):
+        #maximum = torch.max(arg_logits, -1, keepdim=True)[0]
+        #arg_logits = arg_logits - maximum # to avoid potential overflow 
+
+        y_logs, y_ls, y_lprobs, lls, kls, uniques = [], [], [], [], [], []
+        for _ in range(self.nsampling):
+            gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
+                self.classifier.gumbel_relax(argument_mask, arg_logits)
+            # used in decoding, p(a | p, r) with continuous p (predicates) and r (roles)
+            labels_relaxed = gumbel_hard if self.straight_through else gumbel_soft
+            encoded_labels = self.classifier.embed_labels(None, labels_relaxed=labels_relaxed)  
+
+            onehots = labels_relaxed if self.continuous_label else None #  
+            L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, sampled_labels, 
+                encoded_labels, ctx_lemmas, edge_type_onehots = onehots)
+            lls.append(L_y)
+            
+            # log posteriors
+            indice = torch.max(gumbel_hard, -1, keepdim=True)[1]
+            hard_lprobs = torch.gather(gumbel_soft_log, -1, indice).squeeze(-1)
+            hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
+            y_log = torch.sum(hard_lprobs, -1) # posteriors q(r | x, p, a)
+            
+            y_lprobs.append(y_log)
+
+            # TODO it is equivalent to the entropy, kl(q || c), c: constant
+            # this is not true, we are using the Gumbel distribution
+            onehots = gumbel_hard if self.kl_prior is not None else None
+            y_log, uniqueness = self.autoencoder.kld(
+                                         arg_logits, 
+                                         mask = argument_mask, 
+                                         node_types = arg_lemmas, 
+                                         embedded_nodes = embedded_nodes, 
+                                         embedded_edges = encoded_labels, 
+                                         edge_type_onehots = onehots)
+            if uniqueness is not None:
+                uniques.append(uniqueness)
+
+            y_logs.append(y_log)
+            y_ls.append(L_y)
+
+        # samples (nsample, batch_size) 
+        y_lprobs = torch.stack(y_lprobs, 0)
+        y_logs = torch.stack(y_logs, 0)
+        y_ls = torch.stack(y_ls, 0)
+
+        # along sample dimension
+        y_logs = torch.mean(y_logs, 0)
+        y_ls = torch.mean(y_ls, 0)
+
+        if len(uniques) > 0: # loss > 0 to be minimized
+            uniques = torch.stack(uniques, 0)
+            uniques = torch.mean(uniques, 0)
+            uniques = torch.mean(uniques)
+            output_dict['kl_loss'] = uniques 
+
+        # along batch dimension
+        KL = torch.mean(y_logs) 
+        L_u = torch.mean(y_ls)
+
+        output_dict['KL'] = KL 
+        output_dict['L_u'] = L_u
+        output_dict['loss'] = -L_u + KL
 
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
@@ -172,7 +234,12 @@ class VaeSemanticRoleLabeler(Model):
         if supervisely_training:
             self.supervised(argument_mask, arg_logits, arg_labels, embedded_nodes, lemma_ctx, output_dict) 
         else: ### unlabled halve
-            self.unsupervised(argument_mask, arg_logits, arg_labels, arg_lemmas, embedded_nodes, lemma_ctx, output_dict) 
+            if self.way2relax_argmax == 'softmax':
+                self.unsupervised_softmax(argument_mask, 
+                    arg_logits, arg_labels, arg_lemmas, embedded_nodes, lemma_ctx, output_dict) 
+            elif self.way2relax_argmax == 'sinkhorn':
+                self.unsupervised_sinkhorn(argument_mask, 
+                    arg_logits, arg_labels, arg_lemmas, embedded_nodes, lemma_ctx, output_dict) 
         return output_dict 
 
     @overrides

@@ -18,7 +18,7 @@ from allennlp.modules import TimeDistributed, TextFieldEmbedder
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
 from allennlp.nn.util import get_lengths_from_binary_sequence_mask
 
-from nlpmimic.nn.util import gumbel_softmax
+from nlpmimic.nn.util import gumbel_softmax, gumbel_sinkhorn
 from nlpmimic.training.metrics import ClusteringBasedF1Measure 
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
@@ -169,7 +169,8 @@ class SrlVaeClassifier(Model):
     
     def gumbel_relax(self, 
                      mask: torch.Tensor,
-                     logits: torch.Tensor):
+                     logits: torch.Tensor,
+                     method: str='softmax'):
         seq_lengths = get_lengths_from_binary_sequence_mask(mask).data.tolist()
         if logits.dim() < 3: # fake batch size
             logits.unsqueeze(0)
@@ -178,8 +179,12 @@ class SrlVaeClassifier(Model):
         self.tau.data.clamp_(min = self.minimum_tau)
         #gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
         #    F.log_softmax(logits.view(-1, self.nclass), dim=-1), tau=self.tau)
-        gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
-            logits.view(-1, self.nclass), tau=self.tau)
+        if method == 'softmax':
+            gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_softmax(
+                logits.view(-1, self.nclass), tau=self.tau)
+        elif method == 'sinkhorn':
+            gumbel_hard, gumbel_soft, gumbel_soft_log = gumbel_sinkhorn(
+                logits.view(-1, self.nclass), tau=self.tau)
             
         gumbel_hard = gumbel_hard.view([batch_size, seq_length, self.nclass]) 
         gumbel_soft = gumbel_soft.view([batch_size, seq_length, self.nclass]) 
