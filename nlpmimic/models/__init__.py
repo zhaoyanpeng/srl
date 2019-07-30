@@ -9,6 +9,7 @@ from nlpmimic.models.vae.srl_vae_finer import SrlFinerAutoencoder
 from nlpmimic.models.vae.srl_vae_lemma import SrlLemmaAutoencoder
 from nlpmimic.models.vae.srl_vae_graph import SrlGraphAutoencoder
 from nlpmimic.models.vae.srl_vae_classifier import SrlVaeClassifier
+from nlpmimic.models.vae.srl_vae_feate import SrlVaeFeateClassifier
 
 from nlpmimic.models.gan.generator import SrlGanGenerator
 from nlpmimic.models.gan.disc_wgan import SrlWganDiscriminator

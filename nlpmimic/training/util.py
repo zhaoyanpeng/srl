@@ -36,6 +36,38 @@ def peep_data(instances: Iterable[Instance], firstk: int = 10):
         labels = instance['srl_frames']
         print(labels)
 
+def features_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE) -> Dict[str, Iterable[Instance]]:
+    reading_list = ["train_data_path", "validation_data_path", "test_data_path", "vocab_src_path"]
+    for data_name in reading_list:
+        data_path = params.get(data_name, None)
+        if data_path is not None:
+            check_for_data_path(data_path, data_name)
+
+    dataset_reader = DatasetReader.from_params(params.pop('dataset_reader'))
+    validation_and_test_dataset_reader: DatasetReader = dataset_reader
+    
+    # training data
+    train_data_path = params.pop('train_data_path')
+    logger.info("Reading training data from %s", train_data_path)
+    train_data = dataset_reader.read(train_data_path)
+
+    datasets: Dict[str, Iterable[Instance]] = {"train": train_data}
+    
+    # validation data
+    validation_data_path = params.pop('validation_data_path', None)
+    if validation_data_path is not None:
+        logger.info("Reading validation data from %s", validation_data_path)
+        validation_data = validation_and_test_dataset_reader.read(validation_data_path)
+        datasets["validation"] = validation_data
+    
+    # testing data
+    test_data_path = params.pop("test_data_path", None)
+    if test_data_path is not None:
+        logger.info("Reading test data from %s", test_data_path)
+        test_data = validation_and_test_dataset_reader.read(test_data_path)
+        datasets["test"] = test_data
+    return datasets
+
 def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE) -> Dict[str, Iterable[Instance]]:
     """
     Load all the datasets specified by the config.
@@ -294,7 +326,7 @@ class DataLazyLoader(object):
                 shuffle_argument_indices(samples)
             batch = Batch(samples)
             batch.index_instances(self.iterator.vocab)
-            batch = batch.as_tensor_dict()
+            batch = batch.as_tensor_dict(verbose=False)
             yield batch, len(samples)
 
 class RealDataLazyLoader(object):
@@ -402,7 +434,8 @@ def decode_metrics(model, batch, training: bool,
 def decode_metrics_vae(model, batch, training: bool, 
                    retrive_crossentropy: bool = False,
                    supervisely_training: bool = False,
-                   peep_prediction: bool = False):
+                   peep_prediction: bool = False,
+                   peep_method: str = 'normal'):
     # forward pass
     output_dict = model(**batch, 
                 retrive_crossentropy = retrive_crossentropy,
@@ -440,7 +473,10 @@ def decode_metrics_vae(model, batch, training: bool,
 
         if peep_prediction: #and not for_training:
             output_dict = model.decode(output_dict)
-            peep_predictions(output_dict)
+            if peep_method == 'normal':
+                peep_predictions(output_dict)
+            else:
+                peep_predictions_feate(output_dict)
             #print('\n\n\n---{}\n\n\n'.format(output_dict))
     except KeyError:
         if training:
@@ -460,6 +496,16 @@ def peep_predictions(output_dict: Dict[str, Any]):
         xx = ['({}|{}: {}_{})'.format(idx, t, g, l) for idx, (t, g, l) in enumerate(zip(token, glabel, label))]
         xx = ' '.join(xx)
         print('{} {}.{} {}\n'.format(xx, p, pid, aid))
+
+def peep_predictions_feate(output_dict: Dict[str, Any]):
+    argmts = output_dict['argmts'][:5]
+    labels = output_dict['srl_tags'][:5]
+    gold_srl = output_dict['gold_srl'][:5]
+    predts = output_dict["predts"]
+    for argmt, label, glabel, p in zip(argmts, labels, gold_srl, predts):
+        xx = ['({}: {}_{})'.format(a, g, l) for idx, (a, l, g) in enumerate(zip(argmt, label, glabel))]
+        xx = ' '.join(xx)
+        print('{} - {}'.format(p, xx))
     
 def get_metrics(model: Model, 
                 total_loss: float, 

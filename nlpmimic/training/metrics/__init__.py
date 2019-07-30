@@ -24,5 +24,6 @@ from allennlp.training.metrics.squad_em_and_f1 import SquadEmAndF1
 from allennlp.training.metrics.unigram_recall import UnigramRecall
 
 from nlpmimic.training.metrics.conll2009_scorer import Conll2009Scorer
+from nlpmimic.training.metrics.feature_f1_measure import FeatureBasedF1Measure 
 from nlpmimic.training.metrics.clustering_based_f1_measure import ClusteringBasedF1Measure 
 from nlpmimic.training.metrics.dependency_based_f1_measure import DependencyBasedF1Measure

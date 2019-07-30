@@ -54,7 +54,8 @@ class SrlVaeClassifier(Model):
         self.lemma_embedder = lemma_embedder
         self.label_embedder = label_embedder
         self.predt_embedder = predt_embedder
-        self.psign_embedder = Embedding(2, psign_dim)
+        if psign_dim is not None:
+            self.psign_embedder = Embedding(2, psign_dim)
 
         self.token_dropout = Dropout(p=token_dropout)
         self.lemma_dropout = Dropout(p=lemma_dropout)
