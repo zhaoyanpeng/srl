@@ -235,6 +235,8 @@ class VaeSrlTrainer(Trainer):
                                         retrive_crossentropy = False, 
                                         supervisely_training = False,
                                         peep_prediction=peep)
+            if torch.isnan(loss):
+                raise ValueError("nan loss encountered")
 
             if ce_loss is not None:
                 ce_loss = ce_loss.item()

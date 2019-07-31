@@ -96,7 +96,7 @@ class SrlVaeFeateClassifier(Model):
         
         self.ignore_span_metric = ignore_span_metric
 
-        params = {'unlabeled_vals': self.suppress_nonarg, 'tag_namespace': "srl_tags"}
+        params = {'unlabeled_vals': self.suppress_nonarg, 'tag_namespace': "srl_tags", 'per_predicate': True}
         self.span_metric = FeatureBasedF1Measure(vocab, **params) 
 
         self._label_smoothing = label_smoothing
@@ -150,13 +150,14 @@ class SrlVaeFeateClassifier(Model):
                     logits: torch.Tensor,
                     labels: torch.Tensor,
                     output_dict: Dict[str, torch.Tensor], 
+                    predicates: torch.Tensor = None, 
                     metadata: List[Dict[str, Any]] = None) -> None:
         if labels is None: 
             raise ConfigurationError("Prediction loss required but gold labels `labels` is None.")
         output_dict["gold_srl"] = labels # decoded in `decode` for the purpose of debugging
 
         if not self.ignore_span_metric:
-            self.span_metric(logits, labels, mask)
+            self.span_metric(logits, labels, mask=mask, predicates=predicates)
 
         if metadata is not None: 
             list_predts, list_argmts, list_labels = \
@@ -215,5 +216,5 @@ class SrlVaeFeateClassifier(Model):
             metric_dict = self.span_metric.get_metric(reset=reset)
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
-            return {x: y for x, y in metric_dict.items() if "f1-measure-overall" in x}
+            return {x: y for x, y in metric_dict.items() if "f1" in x}
 

@@ -14,10 +14,11 @@ class VaeSemanticRoleLabeler(Model):
                  autoencoder: Model = None,
                  feature_dim: int = None,
                  alpha: float = 0.0,
-                 nsampling: int = 10,
                  kl_prior: str = None,
                  reweight: bool = True,
                  loss_type: str = 'ivan',
+                 nsampling: int = 10,
+                 nsampling_power: float = 0.75, # power of word frequencies in negative sampling
                  straight_through: bool = True,
                  continuous_label: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -40,6 +41,14 @@ class VaeSemanticRoleLabeler(Model):
         argmt_embedder = getattr(self.classifier.argmt_embedder, 'token_embedder_{}'.format('argmts'))
         self.argmt_dim = argmt_embedder.get_output_dim()
         self.nlemma = self.vocab.get_vocab_size("argmts")
+        
+        # categorical distribution over arguments
+        lemma_distr = torch.zeros((self.nlemma,))
+        lemma_table = list(self.vocab._retained_counter['argmts'].items())
+        for k, v in self.vocab._retained_counter['argmts'].items():
+            lemma_index = self.vocab.get_token_index(k, namespace='argmts')
+            lemma_distr[lemma_index] = v
+        self.lemma_distr = torch.pow(lemma_distr, nsampling_power)
         
         # global representation of predicates and per-lemma scalar
         lemma_scalar = torch.empty((1, self.nlemma), device=self.classifier.tau.device)
@@ -77,7 +86,7 @@ class VaeSemanticRoleLabeler(Model):
         args_scalar = args_scalar.squeeze(0)
 
         scores += args_scalar
-        scores = torch.sigmoid(scores)
+        scores = F.logsigmoid(scores)
         return scores
 
     def forward(self,  # type: ignore
@@ -98,13 +107,13 @@ class VaeSemanticRoleLabeler(Model):
 
         # role labeler model
         arg_logits = e_f.view(bsize, narg, -1, nrole)  
-        feate_dim = arg_logits.size(-2)
+        feate_dim = arg_logits.size(-2) # # of discrete features
 
         feate_lens = feate_lens.view(-1)
         arg_logits = arg_logits.view(-1, feate_dim, nrole)
 
         for i in range(arg_logits.size(0)):
-            arg_logits[i, feate_lens[i]:, : ] *= 0 
+            arg_logits[i, feate_lens[i]:, : ] *= 0   # mask non-features 
         arg_logits = arg_logits.view(bsize, narg, feate_dim, nrole)
         arg_logits = torch.sum(arg_logits, -2)
         arg_logits += self.label_scalar.unsqueeze(0) # bias
@@ -114,8 +123,8 @@ class VaeSemanticRoleLabeler(Model):
         output_dict = {"logits": arg_logits, "mask": argument_mask}
 
         if not supervisely_training: # do not need to evaluate labeled data
-            self.classifier.add_outputs(
-                argument_mask, arg_logits, srl_frames, output_dict, metadata=metadata) 
+            self.classifier.add_outputs(argument_mask, arg_logits, srl_frames, 
+                output_dict, predicates=predicate['predts'], metadata=metadata) 
         
         if retrive_crossentropy:
             output_dict['ce_loss'] = None 
@@ -159,14 +168,15 @@ class VaeSemanticRoleLabeler(Model):
         arg_lemmas = arguments["argmts"]
         gold_scores = self.compute_potential(dim, arg_lemmas, ctxs, expected_roles) 
 
-
+        distr = self.lemma_distr.to(device=ctxs.device)
         loss = -gold_scores if self.loss_type == "ivan" else 0
         for idx in range(self.nsampling):
             nsample = ctxs.size(0)
-            samples = torch.randint(0, self.nlemma - 1, (nsample,), device=ctxs.device)
+            #samples = torch.randint(0, self.nlemma - 1, (nsample,), device=ctxs.device)
+            samples = torch.multinomial(distr, nsample, replacement=True) # weighted 
             samples = samples.view(bsize, -1)
             samples = (samples + 1 + arg_lemmas) % self.nlemma
-
+            # scores are negative
             fake_scores = self.compute_potential(dim, samples, ctxs, expected_roles) 
 
             if self.loss_type == 'ivan':

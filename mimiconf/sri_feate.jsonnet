@@ -7,9 +7,17 @@
         "max_num_argument": 4,
     },
 
-    "train_data_path": "/disk/scratch1/s1847450/data/ivan15/train.txt",
-    "test_data_path": "/disk/scratch1/s1847450/data/ivan15/test.txt",
-    "validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev.txt",
+    //"train_data_path": "/disk/scratch1/s1847450/data/ivan15/train.txt",
+    //"test_data_path": "/disk/scratch1/s1847450/data/ivan15/test.txt",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev.txt",
+
+    "train_data_path": "/disk/scratch1/s1847450/data/ivan15/train17.txt",
+    "test_data_path": "/disk/scratch1/s1847450/data/ivan15/test17.txt",
+    "validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev17.txt",
+
+    //"train_data_path": "/disk/scratch1/s1847450/data/ivan15/train21.txt",
+    //"test_data_path": "/disk/scratch1/s1847450/data/ivan15/test21.txt",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev21.txt",
 
     "model": {
         "classifier": {
@@ -18,7 +26,7 @@
                 "token_embedders": {
                     "feates": {
                         "type": "embedding",
-                        "embedding_dim": 38,
+                        "embedding_dim": 17,//21, // //38,
                         "vocab_namespace": "feates",
                         "trainable": true 
                     }
@@ -38,7 +46,7 @@
                 "token_embedders": {
                     "predts": {
                         "type": "embedding",
-                        "embedding_dim": 17100,
+                        "embedding_dim": 7650, //9450, // //17100,
                         "vocab_namespace": "predts",
                         "trainable": true 
                     }
@@ -68,7 +76,7 @@
         "num_epochs": 1000,
         "grad_norm": 5.0,
         "grad_clipping": 1.0,
-        "patience": 20,
+        "patience": 100,
         "shuffle": false,
         "validation_metric": "+f1-measure-overall",
         //"validation_metric": "-loss",

@@ -19,12 +19,9 @@ class FeatureBasedF1Measure(Metric):
     def __init__(self,
                  vocabulary: Vocabulary,
                  tag_namespace: str = "srl_tags",
-                 unlabeled_vals: bool = False,
+                 per_predicate: bool = False,  # metrics applied to each predicate
+                 unlabeled_vals: bool = False, # considering the non-argument role
                  ignore_classes: List[str] = None) -> None:
-        """
-        Parameters
-        ----------
-        """
         self._label_vocabulary = vocabulary.get_index_to_token_vocabulary(tag_namespace)
         self._ignore_classes: List[str] = ignore_classes or []
         self._unlabeled_vals = unlabeled_vals
@@ -43,10 +40,18 @@ class FeatureBasedF1Measure(Metric):
         self._ignored_labels = set(["AM-TMP", "AM-MNR", "AM-LOC", "AM-DIR"])
         self._ignored_labels = set() #
 
+        ### below is the implementation of Ivan's evaluator
+        self._per_predicate = per_predicate
+        self._clusters: Dict[str, Dict[str, [Dict, int]]] = defaultdict(dict)
+        self._true_pos = self._true_neg = self._matched = 0
+        self._one_cluster: Dict[str, Dict[str, int]] = defaultdict(dict)
+    
+
     def __call__(self,
                  predictions: torch.Tensor,
                  gold_labels: torch.Tensor,
                  mask: Optional[torch.Tensor] = None,
+                 predicates: torch.Tensor = None,
                  prediction_map: Optional[torch.Tensor] = None):
         """
         Parameters
@@ -55,9 +60,8 @@ class FeatureBasedF1Measure(Metric):
         if mask is None:
             mask = torch.ones_like(gold_labels)
 
-        predictions, gold_labels, mask, prediction_map = self.unwrap_to_tensors(predictions,
-                                                                                gold_labels,
-                                                                                mask, prediction_map)
+        predictions, gold_labels, mask, prediction_map = \
+            self.unwrap_to_tensors(predictions, gold_labels, mask, prediction_map)
 
         num_classes = predictions.size(-1)
         if not self._unlabeled_vals and (gold_labels >= num_classes).any():
@@ -72,8 +76,12 @@ class FeatureBasedF1Measure(Metric):
             argmax_predictions = torch.gather(prediction_map, 1, argmax_predictions)
             gold_labels = torch.gather(prediction_map, 1, gold_labels.long())
 
-        argmax_predictions = argmax_predictions.float()
+        
+        if self._per_predicate:
+            return self.eval_per_predicate(gold_labels, argmax_predictions, sequence_lengths, predicates)
 
+
+        argmax_predictions = argmax_predictions.float()
         # Iterate over timesteps in batch.
         batch_size = gold_labels.size(0)
         for i in range(batch_size):
@@ -116,20 +124,93 @@ class FeatureBasedF1Measure(Metric):
         # output the last one
         #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
 
+    def eval_per_predicate(self, gold_labels, predictions, sequence_lengths, predicates):
+        batch_size = gold_labels.size(0)
+        for i in range(batch_size):
+            length = sequence_lengths[i]
+            predicate = predicates[i].tolist()[0]
+            prediction = predictions[i, :length].tolist()
+            gold_label = gold_labels[i, :length].tolist()
+
+            if length == 0: continue
+
+            # unnecessary to map id roles the str roles as in self.__call__() 
+            for gold, induced in zip(gold_label, prediction):
+                self._matched += 1
+
+                self._clusters[predicate].setdefault(gold, defaultdict(int))
+                self._clusters[predicate][gold][induced] += 1
+
+                self._one_cluster[gold].setdefault(induced, 0)
+                self._one_cluster[gold][induced] += 1
+
+    def cal_pu(self, rets):
+        predictions = set() 
+        for vals in rets.values():
+            predictions = predictions | set(vals.keys())
+
+        pu = 0.
+        for prediction in predictions:
+            this_pu = 0.
+            for vals in rets.values():
+                cnt = vals.get(prediction, 0)
+                if cnt > this_pu:
+                    this_pu = cnt
+            pu += this_pu
+        return pu
+
+    def cal_co(self, rets):
+        predictions = set() 
+        for vals in rets.values():
+            predictions = predictions | set(vals.keys())
+        
+        co = 0.
+        for vals in rets.values():
+            this_co = 0.
+            for prediction in predictions:
+                cnt = vals.get(prediction, 0)
+                if cnt > this_co:
+                    this_co = cnt
+            co += this_co
+        return co 
+    
+    def cal_f1(self, pu, co, c = 1e-15):
+        pu += c
+        pu /= (float(self._matched) + c)
+
+        co += c
+        co /= (float(self._matched) + c)
+
+        f1 = 2 * pu * co / (pu + co)
+        return pu, co, f1
+
+    def get_per_metric(self, reset: bool = False):
+        c = 1e-15 
+        pu = co = 0
+        for _, v in self._clusters.items():
+            pu += self.cal_pu(v)
+            co += self.cal_co(v)
+        pu, co, f1 = self.cal_f1(pu, co)
+
+        all_metrics = {}
+        all_metrics["pu-overall"] = pu 
+        all_metrics["co-overall"] = co 
+        all_metrics["f1-perp"] = f1 
+        
+        pu = self.cal_pu(self._one_cluster)
+        co = self.cal_co(self._one_cluster)
+        pu, co, f1 = self.cal_f1(pu, co)
+
+        all_metrics["f1-measure-overall"] = f1 
+
+        if reset: self.reset()
+        return all_metrics
+
     def get_metric(self, reset: bool = False):
-        """
-        Returns
-        -------
-        A Dict per label containing following the span based metrics:
-        precision : float
-        recall : float
-        f1-measure : float
+        if self._per_predicate:
+            return self.get_per_metric(reset = reset)
 
-        Additionally, an ``overall`` key is included, which provides the precision,
-        recall and f1-measure for all spans.
-        """
-        c = 0 
-
+        c  = 0 
         pu = 0.
         for _, induced in self._induced_clusters.items():
             this_pu = 0 
@@ -168,3 +249,8 @@ class FeatureBasedF1Measure(Metric):
         self._gold_clusters = defaultdict(set)
         self._induced_clusters = defaultdict(set) 
         self._iargument: int = 0 # each argument has an unique index
+
+
+        self._clusters = defaultdict(dict)
+        self._true_pos = self._true_neg = self._matched = 0
+        self._one_cluster = defaultdict(dict)
