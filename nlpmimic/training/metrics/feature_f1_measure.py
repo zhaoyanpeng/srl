@@ -193,15 +193,15 @@ class FeatureBasedF1Measure(Metric):
         pu, co, f1 = self.cal_f1(pu, co)
 
         all_metrics = {}
-        all_metrics["pu-overall"] = pu 
-        all_metrics["co-overall"] = co 
-        all_metrics["f1-perp"] = f1 
+        all_metrics["pu"] = pu 
+        all_metrics["co"] = co 
+        all_metrics["f1"] = f1 
         
         pu = self.cal_pu(self._one_cluster)
         co = self.cal_co(self._one_cluster)
         pu, co, f1 = self.cal_f1(pu, co)
 
-        all_metrics["f1-measure-overall"] = f1 
+        all_metrics["f1-overall"] = f1 
 
         if reset: self.reset()
         return all_metrics
@@ -234,7 +234,7 @@ class FeatureBasedF1Measure(Metric):
         all_metrics = {}
         all_metrics["pu-overall"] = pu 
         all_metrics["co-overall"] = co 
-        all_metrics["f1-measure-overall"] = 2 * pu * co / (pu + co) 
+        all_metrics["f1-overall"] = 2 * pu * co / (pu + co) 
 
         if reset:
             self.reset()

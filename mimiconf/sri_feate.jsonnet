@@ -3,7 +3,7 @@
         "tokens_to_add": {"predts": ["GLOBAL_PREDT"]}
     },
     "dataset_reader":{
-        "type":"feature",
+        "type": "feature",
         "max_num_argument": 4,
     },
 
@@ -26,7 +26,7 @@
                 "token_embedders": {
                     "feates": {
                         "type": "embedding",
-                        "embedding_dim": 17,//21, // //38,
+                        "embedding_dim": 17, //21, //38,  
                         "vocab_namespace": "feates",
                         "trainable": true 
                     }
@@ -36,7 +36,7 @@
                 "token_embedders": {
                     "argmts": {
                         "type": "embedding",
-                        "embedding_dim": 30,
+                        "embedding_dim": 50, //30,  
                         "vocab_namespace": "argmts",
                         "trainable": true 
                     }
@@ -46,7 +46,7 @@
                 "token_embedders": {
                     "predts": {
                         "type": "embedding",
-                        "embedding_dim": 7650, //9450, // //17100,
+                        "embedding_dim": 25500, //7650, //17100, //9450, 
                         "vocab_namespace": "predts",
                         "trainable": true 
                     }
@@ -60,16 +60,27 @@
             "predt_dropout": 0.0,
             "suppress_nonarg": false,
         },
+        "initializer": [
+            [
+                "classifier.predt_embedder.*weight",
+                {
+                    "type": "normal",
+                    "mean": 0.1, 
+                    "std": 0.31623, // sqrt(0.1) 
+                }
+            ]
+        ],
 
         "type": "srl_vae_feate",
-        "feature_dim": 15,
-        "loss_type": "relu",
+        "feature_dim": 30, 
+        "unique_role": true,
+        "loss_type": "ivan",
         "nsampling": 10,
     },
     "iterator": {
         "type": "bucket",
         "sorting_keys": [["arguments", "num_tokens"]],
-        "batch_size": 128, 
+        "batch_size": 100, 
     },
     "trainer": {
         "type": "sri_vae_feats",
@@ -78,12 +89,15 @@
         "grad_clipping": 1.0,
         "patience": 100,
         "shuffle": false,
-        "validation_metric": "+f1-measure-overall",
+        "validation_metric": "+f1",
+        //"validation_metric": "+f1-measure-overall",
         //"validation_metric": "-loss",
         "cuda_device": 2,
         "optimizer": {
-            "type": "adadelta",
-            "rho": 0.95
+            "type": "adagrad",
+            //"lr": 1.0, 
+            //"type": "adadelta",
+            //"rho": 0.95
         },
     }
 }

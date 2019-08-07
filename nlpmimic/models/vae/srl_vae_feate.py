@@ -101,6 +101,11 @@ class SrlVaeFeateClassifier(Model):
 
         self._label_smoothing = label_smoothing
 
+        self.init()
+
+    def init(self):
+        pass 
+
     def forward(self) -> Dict[str, torch.Tensor]:
         return None  
 
@@ -192,7 +197,8 @@ class SrlVaeFeateClassifier(Model):
             scores, max_likelihood_sequence = torch.max(predictions[:length], 1) 
             max_likelihood_sequence = max_likelihood_sequence.tolist() 
             
-            tags = [self.vocab.get_token_from_index(x, namespace=namespace) for x in max_likelihood_sequence]
+            #tags = [self.vocab.get_token_from_index(x, namespace=namespace) for x in max_likelihood_sequence]
+            tags = [str(x) for x in max_likelihood_sequence]
 
             isent += 1
 
@@ -216,5 +222,5 @@ class SrlVaeFeateClassifier(Model):
             metric_dict = self.span_metric.get_metric(reset=reset)
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
-            return {x: y for x, y in metric_dict.items() if "f1" in x}
+            return {x: y for x, y in metric_dict.items() if "f1" in x or "co" in x or "pu" in x}
 

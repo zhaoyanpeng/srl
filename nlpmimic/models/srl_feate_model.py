@@ -11,31 +11,21 @@ from allennlp.nn import InitializerApplicator, RegularizerApplicator
 class VaeSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  classifier: Model,
-                 autoencoder: Model = None,
                  feature_dim: int = None,
-                 alpha: float = 0.0,
-                 kl_prior: str = None,
-                 reweight: bool = True,
+                 unique_role: bool = False,
                  loss_type: str = 'ivan',
                  nsampling: int = 10,
                  nsampling_power: float = 0.75, # power of word frequencies in negative sampling
-                 straight_through: bool = True,
-                 continuous_label: bool = True,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(VaeSemanticRoleLabeler, self).__init__(vocab, regularizer)
         self.minimum_float = 1e-25
 
         self.classifier = classifier
-        self.autoencoder = autoencoder
         self.feature_dim = feature_dim
-        self.alpha = alpha
+        self.unique_role = unique_role
         self.loss_type = loss_type 
         self.nsampling = nsampling
-        self.kl_prior = kl_prior
-        self.reweight = reweight
-        self.straight_through = straight_through
-        self.continuous_label = continuous_label
             
         # auto-regressive model of the decoder will need lemma weights 
         argmt_embedder = getattr(self.classifier.argmt_embedder, 'token_embedder_{}'.format('argmts'))
@@ -70,23 +60,24 @@ class VaeSemanticRoleLabeler(Model):
         self.tau = self.classifier.tau
         initializer(self)
 
-    def compute_potential(self, dim: int, lemmas: torch.Tensor, 
-                          ctxs: torch.Tensor, expected_roles: torch.Tensor):
+    def compute_potential_batch(self, dim: int, lemmas: torch.Tensor, 
+                           ctxs: torch.Tensor, expected_roles: torch.Tensor):
+        nsample = lemmas.size(-1) 
         this_lemmas = {'argmts': lemmas}
-
+        # (bsize, narg, nsample, dim)
         embedded_arguments = self.classifier.encode_lemma(this_lemmas)
-        embedded_arguments = embedded_arguments.view(-1, dim).unsqueeze(-1) # (bsize * narg, dim, 1)  
-        # (bsize * narg, k, dim) X (bsize * narg, dim, 1)
-        args_and_roles = torch.bmm(expected_roles, embedded_arguments).squeeze(-1) 
-        # (bsize * narg, 1, k) X (bsize * narg, k, 1)
-        scores = torch.bmm(ctxs.unsqueeze(1), args_and_roles.unsqueeze(-1)) 
-        scores = scores.squeeze(-1).squeeze(-1)
+        embedded_arguments = embedded_arguments.view(-1, nsample, dim)  
+        # (bsize * narg, nsample, dim) X (bsize * narg, dim, k) 
+        args_and_roles = torch.bmm(embedded_arguments, expected_roles.transpose(-1, -2)) 
+        # (bsize * narg, nsample, k) X (bsize * narg, k, 1) 
+        scores = torch.bmm(args_and_roles, ctxs.unsqueeze(-1)) 
+        scores = scores.squeeze(-1)
 
         args_scalar = torch.gather(self.lemma_scalar, -1, lemmas.view(1, -1)) 
         args_scalar = args_scalar.squeeze(0)
+        args_scalar = args_scalar.view(-1, nsample)
 
-        scores += args_scalar
-        scores = F.logsigmoid(scores)
+        scores = scores + args_scalar
         return scores
 
     def forward(self,  # type: ignore
@@ -105,7 +96,7 @@ class VaeSemanticRoleLabeler(Model):
         k, dim = self.feature_dim, self.argmt_dim
         (bsize, narg), nrole = srl_frames.size(), self.classifier.nclass 
 
-        # role labeler model
+        # role labeling model
         arg_logits = e_f.view(bsize, narg, -1, nrole)  
         feate_dim = arg_logits.size(-2) # # of discrete features
 
@@ -116,7 +107,7 @@ class VaeSemanticRoleLabeler(Model):
             arg_logits[i, feate_lens[i]:, : ] *= 0   # mask non-features 
         arg_logits = arg_logits.view(bsize, narg, feate_dim, nrole)
         arg_logits = torch.sum(arg_logits, -2)
-        arg_logits += self.label_scalar.unsqueeze(0) # bias
+        arg_logits = arg_logits + self.label_scalar.unsqueeze(0) # bias
 
         # basic output stuff 
         argument_mask = m_a
@@ -136,13 +127,25 @@ class VaeSemanticRoleLabeler(Model):
         ### evaluation over
 
 
+        minimum = 1e-15
+        role_probs = torch.softmax(arg_logits, -1)
+        if self.unique_role:
+            log_role_probs = F.log_softmax(arg_logits, -1)
+                 
+            log_flip_probs = torch.log(1 - role_probs + minimum)
+            log_flip_probs = log_flip_probs * argument_mask.unsqueeze(-1).float()
+
+            log_flip_probs_sum = torch.sum(log_flip_probs, 1, keepdim=True)
+            log_flip_probs_sum = log_flip_probs_sum - log_flip_probs 
+            log_flip_probs_sum = log_flip_probs_sum + log_role_probs
+
+            role_probs = torch.softmax(log_flip_probs, -1)
+
         # (bsize, 1, nrole * k * dim): k featuers & dim of lemma embeddings
         global_predt = self.classifier.encode_global_predt(device=self.classifier.tau.device)
         embedded_predicates = e_p.squeeze(1)
-        embedded_predicates += global_predt.unsqueeze(0) 
+        embedded_predicates = embedded_predicates + global_predt.unsqueeze(0) 
         embedded_predicates = embedded_predicates.view(bsize, nrole, -1) # (bsize, nrole, k * dim)
-
-        role_probs = torch.softmax(arg_logits, -1)
 
         # (bsize, narg, nrole) X (bsize, nrole, k * dim)
         expected_roles = torch.bmm(role_probs, embedded_predicates) # (bsize, narg, k * dim)
@@ -159,40 +162,71 @@ class VaeSemanticRoleLabeler(Model):
         args_and_roles = args_and_roles * argument_mask.unsqueeze(-1).float()
         args_and_roles_sum = torch.sum(args_and_roles, 1, keepdim=True) 
 
-        args_and_roles_sum += self.feate_scalar.unsqueeze(0)
+        args_and_roles_sum = args_and_roles_sum + self.feate_scalar.unsqueeze(0)
 
         ctxs = args_and_roles_sum - args_and_roles # (bsize, narg, k)
         ctxs = ctxs.view(-1, k) # (bsize * narg, k)
 
         # 
         arg_lemmas = arguments["argmts"]
-        gold_scores = self.compute_potential(dim, arg_lemmas, ctxs, expected_roles) 
+        #gold_scores = self.compute_potential(dim, arg_lemmas, ctxs, expected_roles) 
+
+        arg_lemmas = arg_lemmas.unsqueeze(-1)
+        gold_scores = self.compute_potential_batch(dim, arg_lemmas, ctxs, expected_roles) 
 
         distr = self.lemma_distr.to(device=ctxs.device)
-        loss = -gold_scores if self.loss_type == "ivan" else 0
+
+        nsample = ctxs.size(0)
+
+        distr = distr.unsqueeze(0).expand(nsample, -1)
+        samples = torch.multinomial(distr, self.nsampling, replacement=False)
+        samples = samples.view(bsize, -1, self.nsampling) # (bsize, narg, nsample)
+        samples = (samples + 1 + arg_lemmas) % self.nlemma
+        fake_scores = self.compute_potential_batch(dim, samples, ctxs, expected_roles) 
+
+        if (argument_mask.sum(-1) == 0).any():
+            raise ValueError("Empty argument set encountered.")
+
+        if self.loss_type == 'ivan':
+            gold_scores = F.logsigmoid(gold_scores)
+            fake_scores = F.logsigmoid(-fake_scores)
+            loss = torch.cat([gold_scores, fake_scores], -1) 
+            loss = loss * argument_mask.view(-1, 1).float()
+            loss = -loss.sum() / argument_mask.sum().float()
+        elif self.loss_type == 'relu':
+            #gold_scores = F.logsigmoid(gold_scores)
+            #fake_scores = F.logsigmoid(fake_scores)
+            gold_scores = F.sigmoid(gold_scores)
+            fake_scores = F.sigmoid(fake_scores)
+            loss = torch.relu(1 - gold_scores + fake_scores)
+            loss = loss.sum(-1) 
+
+            loss = loss * argument_mask.view(-1).float()
+            #loss /= self.nsampling
+            loss = loss.view(bsize, narg)
+            loss = loss.sum(-1) / argument_mask.sum(-1).float()
+            loss = torch.mean(loss)
+        else:
+            gold_scores = F.logsigmoid(gold_scores)
+            fake_scores = F.logsigmoid(fake_scores)
+            loss = - gold_scores + fake_scores
+            loss = loss.sum(-1) 
+
+            loss = loss * argument_mask.view(-1).float()
+            #loss /= self.nsampling
+            loss = loss.view(bsize, narg)
+            loss = loss.sum(-1) / argument_mask.sum(-1).float()
+            loss = torch.mean(loss)
+
+        """
         for idx in range(self.nsampling):
-            nsample = ctxs.size(0)
             #samples = torch.randint(0, self.nlemma - 1, (nsample,), device=ctxs.device)
             samples = torch.multinomial(distr, nsample, replacement=True) # weighted 
             samples = samples.view(bsize, -1)
             samples = (samples + 1 + arg_lemmas) % self.nlemma
             # scores are negative
             fake_scores = self.compute_potential(dim, samples, ctxs, expected_roles) 
-
-            if self.loss_type == 'ivan':
-                loss += fake_scores
-            elif self.loss_type == 'relu':
-                this_loss = torch.relu(1 - gold_scores + fake_scores)
-                loss += this_loss
-        
-        if (argument_mask.sum(-1) == 0).any():
-            raise ValueError("Empty argument set encountered.")
-
-        loss *= argument_mask.view(-1).float()
-        #loss /= self.nsampling
-        loss = loss.view(bsize, narg)
-        loss = loss.sum(-1) / argument_mask.sum(-1).float()
-        loss = loss.sum() / bsize
+        """ 
         output_dict['loss'] = loss
 
         return output_dict 
@@ -205,3 +239,21 @@ class VaeSemanticRoleLabeler(Model):
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         return self.classifier.get_metrics(reset=reset)
 
+    def compute_potential(self, dim: int, lemmas: torch.Tensor, 
+                          ctxs: torch.Tensor, expected_roles: torch.Tensor):
+        this_lemmas = {'argmts': lemmas}
+        
+        embedded_arguments = self.classifier.encode_lemma(this_lemmas)
+        embedded_arguments = embedded_arguments.view(-1, dim).unsqueeze(-1) # (bsize * narg, dim, 1)  
+        # (bsize * narg, k, dim) X (bsize * narg, dim, 1)
+        args_and_roles = torch.bmm(expected_roles, embedded_arguments).squeeze(-1) 
+        # (bsize * narg, 1, k) X (bsize * narg, k, 1)
+        scores = torch.bmm(ctxs.unsqueeze(1), args_and_roles.unsqueeze(-1)) 
+        scores = scores.squeeze(-1).squeeze(-1)
+
+        args_scalar = torch.gather(self.lemma_scalar, -1, lemmas.view(1, -1)) 
+        args_scalar = args_scalar.squeeze(0)
+
+        scores = scores + args_scalar
+        scores = F.logsigmoid(scores)
+        return scores

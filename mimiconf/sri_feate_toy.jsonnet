@@ -57,11 +57,22 @@
             "metric_type": "clustering",
             "suppress_nonarg": false,
         },
-
+        "initializer": [
+            [
+                "classifier.predt_embedder.*weight",
+                {
+                    "type": "normal",
+                    "mean": 0.1, 
+                    "std": 0.31623, // sqrt(0.1) 
+                }
+            ]
+        ],
+    
         "type": "srl_vae_feate",
         "feature_dim": 3,
+        "unique_role": true,
         "loss_type": "relu",
-        //"nsampling": 1,
+        "nsampling": 5,
         //"straight_through": true,
         //"continuous_label": true,
         //"kl_prior": "null",
@@ -77,7 +88,7 @@
         "grad_clipping": 1.0,
         "patience": 20,
         "shuffle": false,
-        "validation_metric": "+f1-measure-overall",
+        "validation_metric": "+f1",
         //"validation_metric": "-loss",
         "cuda_device": 1,
         "optimizer": {
