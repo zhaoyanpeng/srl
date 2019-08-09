@@ -214,7 +214,7 @@ class VaeSemanticRoleLabeler(Model):
         
         if not supervisely_training: # do not need to evaluate labeled data
             self.classifier.add_outputs(pivot, mask, logits, srl_frames, output_dict, \
-                arg_mask=argument_mask, arg_indices=argument_indices, metadata=metadata) 
+                arg_mask=argument_mask, arg_indices=argument_indices, predicates=predicates, metadata=metadata) 
 
         if retrive_crossentropy:
             output_dict['ce_loss'] = self.classifier.labeled_loss(

@@ -19,6 +19,7 @@ class FeatureBasedF1Measure(Metric):
     def __init__(self,
                  vocabulary: Vocabulary,
                  tag_namespace: str = "srl_tags",
+                 is_a_sentence: bool = False,
                  per_predicate: bool = False,  # metrics applied to each predicate
                  unlabeled_vals: bool = False, # considering the non-argument role
                  ignore_classes: List[str] = None) -> None:
@@ -41,6 +42,7 @@ class FeatureBasedF1Measure(Metric):
         self._ignored_labels = set() #
 
         ### below is the implementation of Ivan's evaluator
+        self._is_a_sentence = is_a_sentence
         self._per_predicate = per_predicate
         self._clusters: Dict[str, Dict[str, [Dict, int]]] = defaultdict(dict)
         self._true_pos = self._true_neg = self._matched = 0
@@ -76,8 +78,8 @@ class FeatureBasedF1Measure(Metric):
             argmax_predictions = torch.gather(prediction_map, 1, argmax_predictions)
             gold_labels = torch.gather(prediction_map, 1, gold_labels.long())
 
-        
-        if self._per_predicate:
+
+        if self._per_predicate and not self._is_a_sentence:
             return self.eval_per_predicate(gold_labels, argmax_predictions, sequence_lengths, predicates)
 
 
@@ -85,6 +87,7 @@ class FeatureBasedF1Measure(Metric):
         # Iterate over timesteps in batch.
         batch_size = gold_labels.size(0)
         for i in range(batch_size):
+            predicate = predicates[i].tolist()[0]
             sequence_prediction = argmax_predictions[i, :]
             sequence_gold_label = gold_labels[i, :]
             length = sequence_lengths[i]
@@ -121,8 +124,11 @@ class FeatureBasedF1Measure(Metric):
                     induced_label = gold[0] 
                 self._induced_clusters[induced_label].add(self._iargument)
 
-        # output the last one
-        #print('\n{}\n{}\n'.format(gold_string_labels, predicted_string_labels))
+                self._matched += 1
+                self._clusters[predicate].setdefault(gold, defaultdict(int))
+                self._clusters[predicate][gold][induced] += 1
+                self._one_cluster[gold].setdefault(induced, 0)
+                self._one_cluster[gold][induced] += 1
 
     def eval_per_predicate(self, gold_labels, predictions, sequence_lengths, predicates):
         batch_size = gold_labels.size(0)
@@ -207,7 +213,7 @@ class FeatureBasedF1Measure(Metric):
         return all_metrics
 
     def get_metric(self, reset: bool = False):
-        if self._per_predicate:
+        if self._per_predicate or self._is_a_sentence:
             return self.get_per_metric(reset = reset)
 
         c  = 0 

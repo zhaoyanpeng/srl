@@ -41,6 +41,7 @@ class SrlFinerAutoencoder(Model):
         self._generative_loss = generative_loss
         self._negative_sample = negative_sample
         self._label_smoothing = label_smoothing
+        self._nsampling_power = 0.75
         self._b_ctx_predicate = b_ctx_predicate
         self._b_use_z = b_use_z
         
@@ -61,6 +62,16 @@ class SrlFinerAutoencoder(Model):
         nlemma = self.nlemma if self._generative_loss == 'cs' else lemma_embedder.get_output_dim() 
         if self.decoder is not None:
             self.decoder.add_parameters(nlemma, lemma_embedder)
+        
+        ns = "lemmas"
+        self.nlemma = self.vocab.get_vocab_size(ns)
+        # categorical distribution over arguments
+        lemma_distr = torch.zeros((self.nlemma,))
+        lemma_table = list(self.vocab._retained_counter[ns].items())
+        for k, v in self.vocab._retained_counter[ns].items():
+            lemma_index = self.vocab.get_token_index(k, namespace=ns)
+            lemma_distr[lemma_index] = v
+        self.lemma_distr = torch.pow(lemma_distr, self._nsampling_power)
 
     def forward(self, 
                 mask: torch.Tensor,
@@ -114,34 +125,36 @@ class SrlFinerAutoencoder(Model):
             gold_lemmas = gold_lemmas.contiguous().view(-1, gold_lemmas.size(-1))
 
             logits = self.decoder(z, embedded_edges, embedded_predicates, nodes_contexts=context)
-            logits = logits.view([-1, logits.size(-1)]).unsqueeze(-2)
-
-            gold_logits = torch.bmm(logits, gold_lemmas.unsqueeze(-1))
-            gold_logits = torch.sigmoid(gold_logits).squeeze(-1).squeeze(-1)
+            logits = logits.view([-1, logits.size(-1)]).unsqueeze(-1)
+            # (, 1, 1)
+            gold_logits = torch.bmm(gold_lemmas.unsqueeze(-2), logits)
+            gold_logits = F.logsigmoid(gold_logits).squeeze(-1)
             
             loss = 0
             nsample = batch_size * nnode
-            for idx in range(self._negative_sample):
-                samples = torch.randint(0, self.nlemma - 1, (nsample,), device=node_types.device)
-                samples = samples.view(batch_size, -1)
-                samples = (samples + 1 + node_types) % self.nlemma
-                samples = {"lemmas": samples}
+            distr = self.lemma_distr.to(device=logits.device)
+            distr = distr.unsqueeze(0).expand(nsample, -1)
+            samples = torch.multinomial(distr, self._negative_sample , replacement=False)
+            samples = samples.view(batch_size, -1, self._negative_sample) 
+            samples = (samples + 1 + node_types.unsqueeze(-1)) % self.nlemma
+            samples = {"lemmas": samples}
+            # (bsize, narg, nsample, dim)
+            fake_lemmas = self.lemma_embedder(samples)
+            fake_lemmas = fake_lemmas.unsqueeze(0).expand(self.nsample, -1, -1, -1, -1)
+            fake_lemmas = fake_lemmas.contiguous().view(-1, self._negative_sample, fake_lemmas.size(-1))
+            # (, nsample, 1)
+            fake_logits = torch.bmm(fake_lemmas, logits)
+            fake_logits = F.logsigmoid(-fake_logits).squeeze(-1)
 
-                fake_lemmas = self.lemma_embedder(samples)
-                fake_lemmas = fake_lemmas.unsqueeze(0).expand(self.nsample, -1, -1, -1)
-                fake_lemmas = fake_lemmas.contiguous().view(-1, fake_lemmas.size(-1))
-                
-                fake_logits = torch.bmm(logits, fake_lemmas.unsqueeze(-1))
-                fake_logits = torch.sigmoid(fake_logits).squeeze(-1).squeeze(-1)
-                
-                this_loss = torch.relu(1 - gold_logits + fake_logits)
-                loss += this_loss
+            if (mask.sum(-1) == 0).any():
+                raise ValueError("Empty argument set encountered.")
 
-            loss = loss * mask.view(-1).float()
-            loss = loss.view(-1, nnode)
-            loss = loss.sum(-1) / mask.sum(-1).float()
-
-            llh = torch.mean(loss.view([self.nsample, batch_size]), 0)
+            loss = torch.cat([gold_logits, fake_logits], -1) 
+            loss = loss * mask.view(-1, 1).float()
+            loss = loss.sum(-1) # per-argument
+            loss = loss.view(-1, nnode).sum(-1)
+            loss = loss / mask.sum(-1).float() 
+            llh = -torch.mean(loss.view([self.nsample, batch_size]), 0)
 
         self.likelihood = self.ll_alpha * llh 
         return -self.likelihood 
@@ -155,17 +168,20 @@ class SrlFinerAutoencoder(Model):
             contexts: torch.Tensor = None) -> torch.Tensor:
         if isinstance(self.sampler, SamplerUniform): # should be the Gumbel distribution
             # priors of role labels
-            nlabel = torch.tensor(self.nlabel, device=posteriors.device).float()
-            pz_logs = -torch.sum(mask, -1).float() * torch.log(nlabel)
-            kl_loss = posteriors - pz_logs
+            kl_loss = 0
+            if self.kl_alpha != 0 or True:
+                nlabel = torch.tensor(self.nlabel, device=posteriors.device).float()
+                pz_logs = -torch.sum(mask, -1).float() * torch.log(nlabel)
+                kl_loss = posteriors - pz_logs
         elif isinstance(self.sampler, SamplerGumbel):
             #euler = 0.5772
-            ratio = self.sampler.tau_ratio
-            gamma = math.gamma(1 + ratio)
-
-            posteriors = ratio * posteriors * mask.unsqueeze(-1).float()
-            #kl_loss = mast.sum() * (-math.log(ratio) - 1 + euler * (ratio - 1)
-            kl_loss = posteriors.sum() + gamma * torch.exp(-posteriors).sum()
+            kl_loss = 0
+            if self.kl_alpha != 0 or True:
+                ratio = self.sampler.tau_ratio
+                gamma = math.gamma(1 + ratio)
+                posteriors = ratio * posteriors * mask.unsqueeze(-1).float()
+                #kl_loss = mast.sum() * (-math.log(ratio) - 1 + euler * (ratio - 1)
+                kl_loss = posteriors.sum() + gamma * torch.exp(-posteriors).sum()
         else: # use estimated statistics of role labels as priors
             #self.kldistance = self.kl_alpha * posteriors 
             raise ValueError('Not supported.')

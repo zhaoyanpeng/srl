@@ -19,6 +19,7 @@ from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_lo
 from allennlp.nn.util import get_lengths_from_binary_sequence_mask
 
 from nlpmimic.nn.util import gumbel_softmax, gumbel_sinkhorn
+from nlpmimic.training.metrics import FeatureBasedF1Measure 
 from nlpmimic.training.metrics import ClusteringBasedF1Measure 
 from nlpmimic.training.metrics import DependencyBasedF1Measure
 
@@ -100,6 +101,10 @@ class SrlVaeClassifier(Model):
             self.span_metric = DependencyBasedF1Measure(vocab, **params) 
         elif metric_type == 'clustering':
             self.span_metric = ClusteringBasedF1Measure(vocab, **params) 
+        else:
+            params['per_predicate'] = True 
+            params['is_a_sentence'] = True 
+            self.span_metric = FeatureBasedF1Measure(vocab, **params) 
 
         self._label_smoothing = label_smoothing
 
@@ -331,12 +336,16 @@ class SrlVaeClassifier(Model):
                     output_dict: Dict[str, torch.Tensor], 
                     arg_mask: torch.Tensor = None,
                     arg_indices: torch.Tensor = None,
+                    predicates: torch.Tensor = None, 
                     metadata: List[Dict[str, Any]] = None) -> None:
         if labels is None: 
             raise ConfigurationError("Prediction loss required but gold labels `labels` is None.")
         
         if not self.ignore_span_metric:
-            self.span_metric(logits[pivot:], labels[pivot:], mask[pivot:])
+            if predicates is not None:
+                self.span_metric(logits[pivot:], labels[pivot:], mask=mask[pivot:], predicates=predicates[pivot:])
+            else:
+                self.span_metric(logits[pivot:], labels[pivot:], mask[pivot:])
             
         if self.suppress_nonarg: # for decoding
             output_dict['arg_masks'] = arg_mask[pivot:]
@@ -407,7 +416,10 @@ class SrlVaeClassifier(Model):
                     ilabel = 0 # non-argument label
                     if idx in constraints[isent]:
                         ilabel = x + 1 
-                    tag = self.vocab.get_token_from_index(ilabel, namespace="srl_tags")
+                    if isinstance(self.span_metric, FeatureBasedF1Measure):
+                        tag = str(ilabel) 
+                    else:
+                        tag = self.vocab.get_token_from_index(ilabel, namespace="srl_tags")
                     tags.append(tag)
             isent += 1
 
@@ -653,5 +665,8 @@ class SrlVaeClassifier(Model):
             metric_dict = self.span_metric.get_metric(reset=reset)
             # This can be a lot of metrics, as there are 3 per class.
             # we only really care about the overall metrics, so we filter for them here.
-            return {x: y for x, y in metric_dict.items() if "f1-measure-overall" in x}
+            if isinstance(self.span_metric, FeatureBasedF1Measure):
+                return {x: y for x, y in metric_dict.items() if "f1" in x or "co" in x or "pu" in x}
+            else:
+                return {x: y for x, y in metric_dict.items() if "f1-measure-overall" in x}
 
