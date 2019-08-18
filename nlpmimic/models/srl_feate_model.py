@@ -61,7 +61,7 @@ class VaeSemanticRoleLabeler(Model):
         initializer(self)
 
     def compute_potential_batch(self, dim: int, lemmas: torch.Tensor, 
-                           ctxs: torch.Tensor, expected_roles: torch.Tensor):
+                           ctxs: torch.Tensor, expected_roles: torch.Tensor, args_scalar=None):
         nsample = lemmas.size(-1) 
         this_lemmas = {'argmts': lemmas}
         # (bsize, narg, nsample, dim)
@@ -72,10 +72,11 @@ class VaeSemanticRoleLabeler(Model):
         # (bsize * narg, nsample, k) X (bsize * narg, k, 1) 
         scores = torch.bmm(args_and_roles, ctxs.unsqueeze(-1)) 
         scores = scores.squeeze(-1)
-
-        args_scalar = torch.gather(self.lemma_scalar, -1, lemmas.view(1, -1)) 
-        args_scalar = args_scalar.squeeze(0)
-        args_scalar = args_scalar.view(-1, nsample)
+        
+        if args_scalar is None:
+            args_scalar = torch.gather(self.lemma_scalar, -1, lemmas.view(1, -1)) 
+            args_scalar = args_scalar.squeeze(0)
+            args_scalar = args_scalar.view(-1, nsample)
 
         scores = scores + args_scalar
         return scores
@@ -151,7 +152,7 @@ class VaeSemanticRoleLabeler(Model):
         expected_roles = torch.bmm(role_probs, embedded_predicates) # (bsize, narg, k * dim)
         expected_roles = expected_roles.view(bsize, narg, k, dim) # (bsize, narg, k, dim)
         expected_roles = expected_roles.view(-1, k, dim) # (bsize * narg, k, dim)
-        
+
         # (bsize, narg, dim)
         embedded_arguments = e_a 
         embedded_arguments = embedded_arguments.view(-1, dim).unsqueeze(-1)   
@@ -169,10 +170,17 @@ class VaeSemanticRoleLabeler(Model):
 
         # 
         arg_lemmas = arguments["argmts"]
+        arg_lemmas = arg_lemmas.unsqueeze(-1)
         #gold_scores = self.compute_potential(dim, arg_lemmas, ctxs, expected_roles) 
 
-        arg_lemmas = arg_lemmas.unsqueeze(-1)
-        gold_scores = self.compute_potential_batch(dim, arg_lemmas, ctxs, expected_roles) 
+        args_scalar = None
+        if self.loss_type=='ivan' and False:
+            args_scalar = torch.gather(self.lemma_scalar, -1, arg_lemmas.view(1, -1)) 
+            args_scalar = args_scalar.squeeze(0) # (bsize * narg, 1)
+            args_scalar = args_scalar.view(-1, 1)
+        args_scalar = None
+
+        gold_scores = self.compute_potential_batch(dim, arg_lemmas, ctxs, expected_roles, args_scalar=args_scalar) 
 
         distr = self.lemma_distr.to(device=ctxs.device)
 
@@ -182,7 +190,15 @@ class VaeSemanticRoleLabeler(Model):
         samples = torch.multinomial(distr, self.nsampling, replacement=False)
         samples = samples.view(bsize, -1, self.nsampling) # (bsize, narg, nsample)
         samples = (samples + 1 + arg_lemmas) % self.nlemma
-        fake_scores = self.compute_potential_batch(dim, samples, ctxs, expected_roles) 
+        fake_scores = self.compute_potential_batch(dim, samples, ctxs, expected_roles, args_scalar=args_scalar) 
+        """
+        fake_scores = []
+        for i in range(nsample):
+            sample = samples[:, :, i : i + 1] 
+            fake_score = self.compute_potential_batch(dim, samples, ctxs, expected_roles, args_scalar=args_scalar) 
+            fake_scores.append(fake_score)
+        fake_scores = torch.cat(fake_scores, -1)
+        """
 
         if (argument_mask.sum(-1) == 0).any():
             raise ValueError("Empty argument set encountered.")

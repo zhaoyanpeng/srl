@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_feate17_4.50.30_ivan_x"
+model_name="sri_feate21_4.100.50_ivan_fixed"
 param_name="sri_feate.jsonnet"
 model_path=$droot/model
 

@@ -11,13 +11,13 @@
     //"test_data_path": "/disk/scratch1/s1847450/data/ivan15/test.txt",
     //"validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev.txt",
 
-    "train_data_path": "/disk/scratch1/s1847450/data/ivan15/train17.txt",
-    "test_data_path": "/disk/scratch1/s1847450/data/ivan15/test17.txt",
-    "validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev17.txt",
+    //"train_data_path": "/disk/scratch1/s1847450/data/ivan15/train17.txt",
+    //"test_data_path": "/disk/scratch1/s1847450/data/ivan15/test17.txt",
+    //"validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev17.txt",
 
-    //"train_data_path": "/disk/scratch1/s1847450/data/ivan15/train21.txt",
-    //"test_data_path": "/disk/scratch1/s1847450/data/ivan15/test21.txt",
-    //"validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev21.txt",
+    "train_data_path": "/disk/scratch1/s1847450/data/ivan15/train21.txt",
+    "test_data_path": "/disk/scratch1/s1847450/data/ivan15/test21.txt",
+    "validation_data_path": "/disk/scratch1/s1847450/data/ivan15/dev21.txt",
 
     "model": {
         "classifier": {
@@ -26,7 +26,7 @@
                 "token_embedders": {
                     "feates": {
                         "type": "embedding",
-                        "embedding_dim": 17, //21, //38,  
+                        "embedding_dim": 21, //17, //38,  
                         "vocab_namespace": "feates",
                         "trainable": true 
                     }
@@ -36,9 +36,10 @@
                 "token_embedders": {
                     "argmts": {
                         "type": "embedding",
-                        "embedding_dim": 50, //30,  
+                        "embedding_dim": 100, //30,  
                         "vocab_namespace": "argmts",
-                        "trainable": true 
+                        "pretrained_file": "/disk/scratch1/s1847450/data/lemmata/en.lemma.100.20.vec.morph",
+                        "trainable": false 
                     }
                 }
             },
@@ -46,7 +47,7 @@
                 "token_embedders": {
                     "predts": {
                         "type": "embedding",
-                        "embedding_dim": 25500, //7650, //17100, //9450, 
+                        "embedding_dim": 105000, //85000, //25500, //7650, //17100, //9450, 
                         "vocab_namespace": "predts",
                         "trainable": true 
                     }
@@ -72,7 +73,7 @@
         ],
 
         "type": "srl_vae_feate",
-        "feature_dim": 30, 
+        "feature_dim": 50, 
         "unique_role": true,
         "loss_type": "ivan",
         "nsampling": 10,
