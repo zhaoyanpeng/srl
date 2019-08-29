@@ -74,11 +74,13 @@ class SrlGraphDecoder(Seq2SeqEncoder):
 
         embedded_edges = embedded_edges.unsqueeze(0).expand(nsample, -1, -1, -1) 
         embedded_predicates = embedded_predicates.unsqueeze(0).expand(nsample, -1, nnode, -1)
-
-        nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
-        ctx_lemmas, ctx_labels = torch.chunk(nodes_contexts, 2, -1) 
         
-        embedded_nodes = self.kernel(ctx_lemmas, ctx_labels, embedded_edges, embedded_predicates)
+        if nodes_contexts is None:
+            embedded_nodes += [embedded_edges, embedded_predicates]
+        else:
+            nodes_contexts = nodes_contexts.unsqueeze(0).expand(nsample, -1, -1, -1) 
+            ctx_lemmas, ctx_labels = torch.chunk(nodes_contexts, 2, -1) 
+            embedded_nodes += self.kernel(ctx_lemmas, ctx_labels, embedded_edges, embedded_predicates)
 
         embedded_nodes = torch.cat(embedded_nodes, -1)
         embedded_nodes = self.multi_dense(embedded_nodes)

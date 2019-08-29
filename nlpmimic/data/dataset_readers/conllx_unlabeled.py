@@ -54,8 +54,11 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     """
     _DUMMY = '_'
     _EMPTY_LABEL = 'O'
-    _EMPTY_LEMMA = 'M' # masked lemma
+    _EMPTY_LEMMA = '@@UNKNOWN@@' # masked lemma
+    _EMPTY_PREDICATE = '@@UNKNOWN@@'
+    _WILD_NUMBER = 'NNN'
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
+    _RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic' # srl_gan
     _DEFAULT_APPENDIX_TYPE = 'nyt_infer' # nyt_learn
@@ -66,10 +69,13 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                  lemma_indexers: Dict[str, TokenIndexer] = None,
                  lemma_file: str = None,
                  lemma_use_firstk: int = 5000, # used as frequency when it is smaller than 100
+                 predicate_file: str = None,
+                 predicate_use_firstk: int = 1500,
                  feature_labels: Sequence[str] = (),
                  maximum_length: float = float('inf'),
+                 flatten_number: bool = False,
                  valid_srl_labels: Sequence[str] = (),
-                 move_preposition_head: bool = False,
+                 moved_preposition_head: List[str] = [],
                  allow_null_predicate: bool = False,
                  max_num_argument: int = 7,
                  min_valid_lemmas: float = None,
@@ -84,12 +90,13 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             if label not in self._VALID_LABELS: 
                 raise ConfigurationError("unknown feature label type: {}".format(label))
         
+        self.flatten_number = flatten_number
         self.maximum_length = maximum_length
         self.valid_srl_labels = valid_srl_labels
         self.min_valid_lemmas = min_valid_lemmas
 
         self.feature_labels = set(feature_labels)
-        self.move_preposition_head = move_preposition_head
+        self.moved_preposition_head = moved_preposition_head
         self.allow_null_predicate = allow_null_predicate
         self.instance_type = instance_type
 
@@ -99,6 +106,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                 lemma_dict = Counter() 
                 with open(lemma_file, 'r') as lemmas:
                     for line in lemmas:
+                        if not line.strip():
+                            continue
                         k, v = line.strip().split()
                         lemma_dict[k] += int(v)
                 # construct vocab
@@ -116,12 +125,56 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             logger.info("Reading vocabulary of lemmas failed: %s", lemma_file)
             self.lemma_set = None
     
-    def filter_lemmas(self, lemmas: List[str], predicted_lemmas: List[str] = None) -> List[str]:
+        try:
+            self.predicate_set = None
+            if predicate_file is not None:
+                use_json = True if predicate_file.endswith('.json') else False
+                predicate_dict = Counter()
+                with open(predicate_file, 'r') as predicates:
+                    for line in predicates:
+                        if not line.strip():
+                            continue
+                        if use_json:
+                            line = json.loads(line)
+                        else:
+                            line = line.strip().split()
+                        k, v = line[0], int(line[1])
+                        predicate_dict[k] += int(v)
+                # construct vocab
+                predicate_set = set()
+                if predicate_use_firstk > 100:
+                    for idx, (k, v) in enumerate(predicate_dict.most_common()):
+                        if idx >= predicate_use_firstk: break
+                        predicate_set.add(k)
+                else:
+                    for k, v in predicate_dict.most_common():
+                        if v < predicate_use_firstk: continue
+                        predicate_set.add(k)
+                self.predicate_set = predicate_set
+        except Exception as e:
+            logger.info("Reading vocabulary of predicates failed: %s", predicate_file)
+            self.predicate_set = None
+
+    def filter_lemmas(self, lemmas: List[str], sentence: Conll2009Sentence) -> List[str]:
         gold_lemmas = list(set(lemmas))  
         gold_isnull = len(gold_lemmas) == 1 and gold_lemmas[0] == self._DUMMY
+        
+        if self.flatten_number: # replace numbers with ...
+            pos_tags = list(set(sentence.pos_tags))  
+            if len(pos_tags) == 1 and pos_tags[0] == self._DUMMY:
+                pos_tags = sentence.predicted_pos_tags 
+            else:
+                pos_tags = sentence.pos_tags
+            for idx, lemma in enumerate(lemmas):
+                if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                    if len(sentence.tokens) > 0:
+                        sentence.tokens[idx] = self._WILD_NUMBER 
+                    if len(sentence.lemmas) > 0:
+                        sentence.lemmas[idx] = self._WILD_NUMBER 
+                    if len(sentence.predicted_lemmas) > 0:
+                        sentence.predicted_lemmas[idx] = self._WILD_NUMBER 
 
-        lemmas = lemmas if not gold_isnull else predicted_lemmas
-
+        lemmas = sentence.lemmas if not gold_isnull else sentence.predicted_lemmas
         if self.lemma_set is not None and lemmas is not None:
             lemmas = [lemma if lemma in self.lemma_set else self._EMPTY_LEMMA for lemma in lemmas] 
         return lemmas
@@ -166,18 +219,20 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     @overrides
     def _read(self, 
               context_path: str, 
-              appendix_path: str, 
+              appendix_path: str = None, 
               appendix_type: str = _DEFAULT_APPENDIX_TYPE, 
               firstk: int = sys.maxsize) -> Iterable[Instance]:
         # if `file_path` is a URL, redirect to the cache
         context_path = cached_path(context_path)
-        appendix_path = cached_path(appendix_path)
+        if appendix_path is not None:
+            appendix_path = cached_path(appendix_path)
         cnt: int = 0
+        xll: int = 0
         xxl: int = 0 
         llx: int = 0
         isample: int = 0
-        for sentence in self._sentences(context_path, appendix_path, appendix_type): 
-            lemmas = self.filter_lemmas(sentence.lemmas, sentence.predicted_lemmas)
+        for sentence in self._sentences(context_path, appendix_path=appendix_path, appendix_type=appendix_type): 
+            lemmas = self.filter_lemmas(sentence.lemmas, sentence)
             tokens = [Token(t) for t in sentence.tokens]
             pos_tags = sentence.predicted_pos_tags
             
@@ -187,7 +242,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
             if len(tokens) > self.maximum_length:
                 continue
-            if self.move_preposition_head:
+            if False and self.moved_preposition_head: # can't move without head ids
                 sentence.move_preposition_head()
 
             if not sentence.srl_frames:    
@@ -218,6 +273,13 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                         #print('\n{}\n{}\n{}\n'.format(cnt, xxl, sentence.format()))
                         continue
 
+                    if self.predicate_set is not None and \
+                        predicate not in self.predicate_set:
+                        xll += 1
+                        predicate = self._EMPTY_PREDICATE
+                        pass
+                        #continue
+
                     if self.min_valid_lemmas and not self.is_valid_lemmas(lemmas, labels):
                         llx += 1                 
                         continue
@@ -241,7 +303,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                         break
                 if isample >= firstk:
                     break
-        logger.info("{} sentences, {} instances, {} skipped instances".format(cnt, isample, llx))
+        logger.info("{} sentences, {} instances, {} skipped instances, {} modified predicates".format(cnt, isample, xxl, xll))
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],
@@ -380,27 +442,42 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
         else:
             raise ConfigurationError("unknown appendix type: {}".format(label))
             
-    def _sentences(self, context_path: str, appendix_path: str, appendix_type: str) -> Iterable[Conll2009Sentence]:
+    def _sentences(self, context_path: str, appendix_path: str = None, 
+        appendix_type: str = _DEFAULT_APPENDIX_TYPE) -> Iterable[Conll2009Sentence]:
+        """ The appendix file could have been merged into the context file
         """
-        """
-        with open(context_path, "r", encoding='utf8') as context_file, \
-            open(appendix_path, "r", encoding='utf8') as appendix_file:
-            logger.info("Reading contexts from lines in file at: %s", context_path)
-            logger.info("Reading appendix from lines in file at: %s", appendix_path)
-            conll_rows = []
-            for context, appendix in zip(context_file, appendix_file):
-                context = context.strip()
-                appendix = appendix.strip()
-
-                line = ' '.join([context, appendix]).strip()
-
-                if not line and conll_rows:
+        if appendix_path is None:
+            with open(context_path, "r", encoding='utf8') as context_file:
+                logger.info("Reading contexts from lines in file at: %s", context_path)
+                conll_rows = []
+                for context in context_file:
+                    line = context.strip()
+                    if not line and conll_rows:
+                        yield self._conll_rows_to_sentence(conll_rows, appendix_type)
+                        conll_rows = []
+                        continue
+                    if line: conll_rows.append(line)
+                if conll_rows:
                     yield self._conll_rows_to_sentence(conll_rows, appendix_type)
-                    conll_rows = []
-                    continue
-                if line: conll_rows.append(line)
-            if conll_rows:
-                yield self._conll_rows_to_sentence(conll_rows, appendix_type)
+        else:
+            with open(context_path, "r", encoding='utf8') as context_file, \
+                open(appendix_path, "r", encoding='utf8') as appendix_file:
+                logger.info("Reading contexts from lines in file at: %s", context_path)
+                logger.info("Reading appendix from lines in file at: %s", appendix_path)
+                conll_rows = []
+                for context, appendix in zip(context_file, appendix_file):
+                    context = context.strip()
+                    appendix = appendix.strip()
+
+                    line = ' '.join([context, appendix]).strip()
+
+                    if not line and conll_rows:
+                        yield self._conll_rows_to_sentence(conll_rows, appendix_type)
+                        conll_rows = []
+                        continue
+                    if line: conll_rows.append(line)
+                if conll_rows:
+                    yield self._conll_rows_to_sentence(conll_rows, appendix_type)
 
     def _conll_rows_to_sentence(self, conll_rows: List[str], appendix_type: str) -> Conll2009Sentence:
         # Token counter, starting at 1 for each new sentence

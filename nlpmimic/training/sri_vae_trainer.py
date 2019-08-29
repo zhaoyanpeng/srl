@@ -24,7 +24,7 @@ from allennlp.training import util as training_util
 from nlpmimic.training import util as mimic_training_util
 from nlpmimic.training.util import DataSampler, DataLazyLoader 
 from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
-
+torch.autograd.set_detect_anomaly(True)
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 @TrainerBase.register("sri_vae")
@@ -149,18 +149,27 @@ class VaeSrlTrainer(Trainer):
         self.consecutive_update = consecutive_update
         self.dis_max_nbatch = dis_max_nbatch
         self.gen_max_nbatch = gen_max_nbatch
-        
+         
         if self.train_dx_data is not None:
             self.noun_sampler = DataLazyLoader(
                 self.train_dx_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
         if self.train_dy_data is not None:
             self.verb_sampler = DataSampler(
                 self.train_dy_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments) 
+        """
+        if self.train_dy_data is not None:
+            self.verb_sampler = DataLazyLoader(
+                self.train_dy_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments)
+        if self.train_dx_data is not None:
+            self.noun_sampler = DataSampler(
+                self.train_dx_data, self.iterator, self.sort_by_length, shuffle_arguments = shuffle_arguments) 
+        """
     
     def batch_loss(self, batch, 
                    training: bool = False, 
                    retrive_crossentropy: bool = False,
                    supervisely_training: bool = False,
+                   iwanto_do_evaluation: bool = False,
                    peep_prediction: bool = False) -> torch.Tensor:
         if self._multiple_gpu:
             raise RuntimeError("Multiple-gpu training not supported.")
@@ -171,6 +180,7 @@ class VaeSrlTrainer(Trainer):
                                     self.model, batch, training, 
                                     retrive_crossentropy = retrive_crossentropy,
                                     supervisely_training = supervisely_training,
+                                    iwanto_do_evaluation = iwanto_do_evaluation,
                                     peep_prediction = peep_prediction)
             return statistics 
 
@@ -190,6 +200,8 @@ class VaeSrlTrainer(Trainer):
         # Get tqdm for the training batches
         train_generator = self.noun_sampler.sample()
         num_training_batches = self.noun_sampler.nbatch() 
+        #train_generator = self.verb_sampler.sample()
+        #num_training_batches = self.verb_sampler.nbatch() 
         
         self._last_log = time.time()
         last_save_time = time.time()
@@ -210,6 +222,7 @@ class VaeSrlTrainer(Trainer):
         logger.info("Training")
         train_generator_tqdm = Tqdm.tqdm(train_generator, total=num_training_batches)
         for noun_batch, batch_size in train_generator_tqdm:
+        #for verb_batch, batch_size in train_generator_tqdm:
             peep = False
             if batches_this_epoch % 50 == 0:
                 peep = True 
@@ -219,6 +232,7 @@ class VaeSrlTrainer(Trainer):
             batch_num_total = self._batch_num_total
             
             verb_batch = self.verb_sampler.sample(batch_size) 
+            #noun_batch = self.noun_sampler.sample(batch_size) 
             
             #print()
             #print(verb_batch['argument_indices'])
@@ -228,12 +242,18 @@ class VaeSrlTrainer(Trainer):
 
             ### labeled data
             if self.verb_loss_scalar > 0:
+                iwanto = True 
+                if self.noun_loss_scalar > 0: 
+                    iwanto = this_peep = False 
+                else:
+                    this_peep = peep
                 loss_verb, _, _, L, _, _, C, LL, KL = self.batch_loss(
                                             verb_batch, 
                                             training=True, 
                                             retrive_crossentropy = peep, 
                                             supervisely_training = True,
-                                            peep_prediction=peep)
+                                            iwanto_do_evaluation = iwanto,
+                                            peep_prediction=this_peep)
             else:
                 loss_verb = 0.
                 L = C = LL = KL = None
@@ -245,7 +265,7 @@ class VaeSrlTrainer(Trainer):
                                             training=True, 
                                             retrive_crossentropy = False, 
                                             supervisely_training = False,
-                                            peep_prediction=False)
+                                            peep_prediction=peep)
             else:
                 loss_noun = 0.
                 ce_loss = kl_loss = L_u = H = None

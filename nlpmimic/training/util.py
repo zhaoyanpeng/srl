@@ -43,8 +43,13 @@ def features_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         if data_path is not None:
             check_for_data_path(data_path, data_name)
 
-    dataset_reader = DatasetReader.from_params(params.pop('dataset_reader'))
-    validation_and_test_dataset_reader: DatasetReader = dataset_reader
+    dataset_reader = DatasetReader.from_params(params.pop('train_dataset_reader'))
+    devel_params = params.pop('devel_dataset_reader', None)
+    if devel_params is not None:
+        logger.info("Using a separate dataset reader to load validation and test data.")
+        validation_and_test_dataset_reader = DatasetReader.from_params(devel_params)
+    else:
+        validation_and_test_dataset_reader = dataset_reader
     
     # training data
     train_data_path = params.pop('train_data_path')
@@ -89,13 +94,13 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         if data_path is not None:
             check_for_data_path(data_path, data_name)
 
-    dataset_reader = DatasetReader.from_params(params.pop('dataset_reader'))
-    validation_dataset_reader_params = params.pop("validation_dataset_reader", None)
-
-    validation_and_test_dataset_reader: DatasetReader = dataset_reader
-    if validation_dataset_reader_params is not None:
+    dataset_reader = DatasetReader.from_params(params.pop('train_dataset_reader'))
+    devel_params = params.pop('devel_dataset_reader', None)
+    if devel_params is not None:
         logger.info("Using a separate dataset reader to load validation and test data.")
-        validation_and_test_dataset_reader = DatasetReader.from_params(validation_dataset_reader_params)
+        validation_and_test_dataset_reader = DatasetReader.from_params(devel_params)
+    else:
+        validation_and_test_dataset_reader = dataset_reader
     
     if reader_mode == GAN_READER_MODE or reader_mode == NYT_READER_MODE:
         train_dx_path = params.pop('train_dx_path', None)
@@ -108,7 +113,7 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         train_dy_path = params.pop('train_dy_path', None)
         logger.info("Reading training data of domain y from %s", train_dy_path)
         if train_dy_path is None and reader_mode == NYT_READER_MODE:
-            train_dy_data = [] # empty dx is allowed in this mode
+            train_dy_data = [] # empty dy is allowed in this mode
         else:
             train_dy_data = dataset_reader.read(train_dy_path)
 
@@ -127,27 +132,26 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
             
             nytimes_reader = DatasetReader.from_params(params.pop('nytimes_reader'))
             if train_dy_context_path is None \
-                or train_dy_appendix_path is None \
                 or train_dy_firstk == 0:
+                #or train_dy_appendix_path is None \
                 train_dy_nyt_data = [] # allow empty nyt dy
             else:
                 appendix_type = 'nyt_learn' if using_labeled_verb else 'nyt_infer'
 
                 train_dy_nyt_data = nytimes_reader.read(train_dy_context_path, 
-                                                        train_dy_appendix_path, 
+                                                        appendix_path=train_dy_appendix_path, 
                                                         appendix_type=appendix_type,
                                                         firstk = train_dy_firstk)
 
             if isinstance(train_dy_nyt_data, list) and isinstance(train_dy_data, list):
                 train_dy_data += train_dy_nyt_data # combine nytimes with gold data
             else:
-                train_dy_data = train_dy_nyt_data  # cannot add two iterators 
+                train_dy_data = train_dy_nyt_data  # cannot add two iterators, e.g., in lazy mode 
             
+            train_dx_context_path = params.pop('train_dx_context_path', None)
+            train_dx_appendix_path = params.pop('train_dx_appendix_path', None)   
             if add_unlabeled_noun:
-                train_dx_context_path = params.pop('train_dx_context_path', None)
-                train_dx_appendix_path = params.pop('train_dx_appendix_path')   
-                
-                if train_dx_context_path is None: # x domain has its own context file
+                if train_dx_context_path is None: # x domain does not have its own context file
                     train_dx_context_path = train_dy_context_path
 
                 allow_null_predicate = nytimes_reader.allow_null_predicate
@@ -160,7 +164,7 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                     appendix_type = 'nyt_infer'
                 
                 train_dx_nyt_data = nytimes_reader.read(train_dx_context_path,
-                                                        train_dx_appendix_path,
+                                                        appendix_path=train_dx_appendix_path,
                                                         appendix_type=appendix_type,
                                                         firstk = train_dx_firstk)
                 if not nytimes_reader.lazy: 
@@ -171,9 +175,6 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
                     train_dx_data += train_dx_nyt_data  # combine nytimes with gold data
                 else:
                     train_dx_data = train_dx_nyt_data   # cannot add two iterators 
-            else:
-                params.pop('train_dx_context_path', None)
-                params.pop('train_dx_appendix_path', None)
 
         datasets: Dict[str, Iterable[Instance]] = {"train_dx": train_dx_data,
                                                    "train_dy": train_dy_data}
@@ -207,7 +208,8 @@ def datasets_from_params(params: Params, reader_mode: str = DEFAULT_READER_MODE)
         
         if reader_mode == NYT_READER_MODE and isinstance(vocab_data, list) and \
             isinstance(train_dy_nyt_data, list):
-            vocab_data += train_dy_nyt_data
+            #vocab_data += train_dy_nyt_data
+            pass
 
         datasets["vocab"] = vocab_data
     return datasets
@@ -434,12 +436,14 @@ def decode_metrics(model, batch, training: bool,
 def decode_metrics_vae(model, batch, training: bool, 
                    retrive_crossentropy: bool = False,
                    supervisely_training: bool = False,
+                   iwanto_do_evaluation: bool = False,
                    peep_prediction: bool = False,
                    peep_method: str = 'normal'):
     # forward pass
     output_dict = model(**batch, 
                 retrive_crossentropy = retrive_crossentropy,
-                supervisely_training = supervisely_training)
+                supervisely_training = supervisely_training,
+                iwanto_do_evaluation = iwanto_do_evaluation)
     try:
         loss = ce_loss = kl_loss = L = L_u = H = C = LL = KL = None 
         if training: # compulsory loss

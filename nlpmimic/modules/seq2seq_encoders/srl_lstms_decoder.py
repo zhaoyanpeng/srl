@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from allennlp.modules import Seq2SeqEncoder
+from allennlp.modules import TextFieldEmbedder
 from allennlp.common.checks import ConfigurationError
 
 from nlpmimic.nn.util import gumbel_softmax
@@ -49,9 +50,11 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
         
         self._dropout = torch.nn.Dropout(dropout)
     
-    def add_parameters(self, output_dim: int, lemma_embedder_weight: torch.Tensor, nlabel: int = None) -> None: 
+    def add_parameters(self, output_dim: int, lemma_embedder: TextFieldEmbedder, nlabel: int = None) -> None: 
         self._output_dim = output_dim 
-        self._lemma_embedder_weight = lemma_embedder_weight 
+
+        lemma_embedder = getattr(lemma_embedder, 'token_embedder_{}'.format('lemmas'))
+        self._lemma_embedder_weight = lemma_embedder.weight 
         
         input_dim = self._hidden_dim
         if len(self._dense_layers) > 1: 

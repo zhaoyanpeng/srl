@@ -226,6 +226,9 @@ class TrainerPieces(NamedTuple):
             TrainerPieces.check_data(train_dx_data)
         if train_dy_data is not None and isinstance(train_dy_data, list):
             TrainerPieces.check_data(train_dy_data, vocab)
+        
+        #import sys
+        #sys.exit(0)
 
         return TrainerPieces(model, iterator,
                              train_data, train_dx_data, train_dy_data,

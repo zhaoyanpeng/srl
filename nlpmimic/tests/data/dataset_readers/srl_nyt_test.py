@@ -57,7 +57,6 @@ def main_arg_lemma():
                                           lemma_file = ofile,
                                           lemma_use_firstk = 5,
                                           feature_labels=['pos', 'dep'], 
-                                          move_preposition_head=True,
                                           instance_type='srl_graph',
                                           maximum_length = 2019,
                                           min_valid_lemmas = min_valid_lemmas,
@@ -77,7 +76,7 @@ def main_arg_lemma():
     context_file =  droot + "morph.only/{}".format(ctx_name)
     appendix_file = droot + "morph.only/{}".format(apx_name)
     
-    instances = conll_reader._sentences(context_file, appendix_file, 
+    instances = conll_reader._sentences(context_file, appendix_path=appendix_file, 
                                         appendix_type='nyt_learn')
 
     ifile = instances
@@ -89,8 +88,45 @@ def main_arg_lemma():
 
 class TestConll2003Reader(NlpMimicTestCase):
 
+    @pytest.mark.skip(reason="mute")
     def test_move_head(self):
         main_arg_lemma()
+
+    #@pytest.mark.skip(reason="mute")
+    def test_conllx_reader(self):
+        valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
+                            "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"]
+        valid_srl_labels = set(valid_srl_labels)
+        droot = "/disk/scratch1/s1847450/data/conll09/separated/"
+        ofile = droot + 'all.moved.arg.vocab' 
+        firstk = 100000
+        min_valid_lemmas = 0.5 
+
+        ofile = None
+        valid_srl_labels = None
+        min_valid_lemmas = None
+        
+        conll_reader = ConllxUnlabeledDatasetReader(lazy = False,
+                                              lemma_file = ofile,
+                                              lemma_use_firstk = 5,
+                                              feature_labels=['pos', 'dep'], 
+                                              instance_type='srl_graph',
+                                              maximum_length = 80,
+                                              min_valid_lemmas = min_valid_lemmas,
+                                              max_num_argument = 7, 
+                                              valid_srl_labels = valid_srl_labels,
+                                              allow_null_predicate = False)
+
+        droot = "/disk/scratch1/s1847450/data/nytimes.new/morph.word/"
+        context_file =  droot + "nyt.verb.20.10.1000.s"
+        
+        print(context_file)
+        instances = conll_reader._read(context_file, appendix_path=None, 
+                                       appendix_type='nyt_learn',
+                                       firstk = firstk)
+        for inst in instances:
+            print(inst)
+         
 
     @pytest.mark.skip(reason="mute")
     def test_read_from_conllx_file(self):
@@ -106,7 +142,6 @@ class TestConll2003Reader(NlpMimicTestCase):
                                               lemma_file = ofile,
                                               lemma_use_firstk = 5,
                                               feature_labels=['pos', 'dep'], 
-                                              move_preposition_head=True,
                                               instance_type='srl_graph',
                                               maximum_length = 80,
                                               min_valid_lemmas = min_valid_lemmas,
@@ -123,7 +158,7 @@ class TestConll2003Reader(NlpMimicTestCase):
         #context_file = droot + 'nytimes.45.lemma.small'
         #appendix_file = droot + 'nytimes.verb.small.picked'
         
-        instances = conll_reader._read(context_file, appendix_file, 
+        instances = conll_reader._read(context_file, appendix_path=appendix_file, 
                                        appendix_type='nyt_learn',
                                        firstk = firstk)
     

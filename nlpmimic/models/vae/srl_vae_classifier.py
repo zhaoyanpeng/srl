@@ -32,6 +32,7 @@ class SrlVaeClassifier(Model):
                  lemma_embedder: TextFieldEmbedder = None,
                  label_embedder: Embedding = None,
                  predt_embedder: Embedding = None, # predt: predicate
+                 ctx_encoder: Seq2SeqEncoder = None,
                  seq_encoder: Seq2SeqEncoder = None,
                  psign_dim: int = None, # psign: predicate sign bit (0/1) 
                  tau: float = None,
@@ -46,6 +47,7 @@ class SrlVaeClassifier(Model):
                  embed_lemma_ctx: bool = False,
                  metric_type: str = 'dependency',
                  ignore_span_metric: bool = False,
+                 initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super(SrlVaeClassifier, self).__init__(vocab, regularizer)
         self.signature = 'classifier'
@@ -57,6 +59,9 @@ class SrlVaeClassifier(Model):
         self.predt_embedder = predt_embedder
         if psign_dim is not None:
             self.psign_embedder = Embedding(2, psign_dim)
+        # to be campatible with old models
+        if ctx_encoder is not None:
+            self.ctx_encoder = ctx_encoder
 
         self.token_dropout = Dropout(p=token_dropout)
         self.lemma_dropout = Dropout(p=lemma_dropout)
@@ -124,7 +129,7 @@ class SrlVaeClassifier(Model):
         embedded_tokens_and_psigns = torch.cat([embedded_tokens, embedded_psigns], -1)
         seq_length = embedded_tokens_and_psigns.size(1) # (batch_size, length, dim)
         
-        if self.seq_projection_layer is None:
+        if True or self.seq_projection_layer is None:
             encoded_token = self.seq_encoder(embedded_tokens_and_psigns, mask)
             embedded_seqs = None
         else: # the 'seq_encoder' can also produce a sequence embedding
@@ -145,6 +150,82 @@ class SrlVaeClassifier(Model):
             'logits_softmax': logits_softmax,
             'embedded_seqs': embedded_seqs}
         return output_dict  
+
+    def encode_skeletons(self,
+                        tokens: Dict[str, torch.LongTensor],
+                        predicate_sign: torch.LongTensor, # 1 (is) or 0 (not) predicate position
+                        arg_mask: torch.Tensor,
+                        arg_indices: torch.LongTensor,
+                        max_pooling: bool = False,        # max or mean pooling for feature extraction 
+                        rm_argument: bool = False,        # remove encoded arguments
+                        lemma_embedder: TextFieldEmbedder = None,
+                        lemmas: Dict[str, torch.LongTensor] = None) -> Dict[str, torch.Tensor]:
+        arg_token_idx = self.vocab.get_token_index("NULL_TOKEN", namespace="tokens")
+        arg_lengths = get_lengths_from_binary_sequence_mask(arg_mask).data.tolist()
+
+        this_tokens = []
+        if 'tokens' in tokens:
+            all_tokens = tokens['tokens']
+            for i, length in enumerate(arg_lengths):
+                tokens = all_tokens[i].scatter(0, arg_indices[i][:length], arg_token_idx)
+                this_tokens.append(tokens)
+            #x = self.vocab.get_token_from_index(arg_token_idx, namespace="tokens") 
+            tokens = {'tokens': torch.stack(this_tokens, 0)}
+            #print(tokens['tokens'].size())
+        elif 'elmo' in tokens:
+            all_tokens = tokens['elmo']
+            batch_size, _, dim = all_tokens.size()
+            for i, length in enumerate(arg_lengths):
+                this_arg_indices = arg_indices[i][:length].unsqueeze(-1).expand(-1, dim)
+                tokens = all_tokens[i].scatter(0, this_arg_indices, 1)
+                this_tokens.append(tokens)
+            tokens = {'elmo': torch.stack(this_tokens, 0)}
+            #print(tokens['elmo'].size())
+        
+        # encoding skeletons    
+        embedded_tokens = self.token_embedder(tokens)
+        embedded_tokens = self.token_dropout(embedded_tokens)
+
+        batch_size = embedded_tokens.size(0) 
+        token_mask = get_text_field_mask(tokens)
+        seq_lengths = get_lengths_from_binary_sequence_mask(token_mask).data.tolist()
+
+        embedded_psigns = self.psign_embedder(predicate_sign)
+        embedded_tokens_and_psigns = torch.cat([embedded_tokens, embedded_psigns], -1)
+        seq_length = embedded_tokens_and_psigns.size(1) # (batch_size, length, dim)
+
+        ctx_encoder = getattr(self, 'ctx_encoder', None)
+        if ctx_encoder is not None:
+            encoded_tokens = self.ctx_encoder(embedded_tokens_and_psigns, token_mask)
+            token_dim = self.ctx_encoder.get_output_dim()
+        else:
+            encoded_tokens = self.seq_encoder(embedded_tokens_and_psigns, token_mask)
+            token_dim = self.seq_encoder.get_output_dim()
+
+        # contextualized arguments
+        p_idx = predicate_sign.max(-1, keepdim=True)[1] # (bsize, 1)
+        p_ctx = torch.gather(encoded_tokens, 1, p_idx.unsqueeze(-1).expand(-1, -1, token_dim)) 
+        a_idx = arg_indices.unsqueeze(-1).expand(-1, -1, token_dim)
+        a_ctx = torch.gather(encoded_tokens, 1, a_idx) 
+
+        p_ctx = self.seq_projection_layer(p_ctx)
+        a_ctx = self.seq_projection_layer(a_ctx)
+        
+        embedded_seqs = [] 
+        dummy = -1e15 if max_pooling else 0
+        for i, (a_len, t_len) in enumerate(zip(arg_lengths, seq_lengths)):
+            if rm_argument:
+                idxes = arg_indices[i][:a_len].unsqueeze(-1).expand(-1, token_dim)
+                encoded_tokens[i].scatter_(0, idxes, dummy)
+            embedded_seq = encoded_tokens[i, :t_len, :]
+            if max_pooling:
+                embedded_seq = embedded_seq.max(0)[0]
+            else: # mean pooling
+                embedded_seq = embedded_seq.mean(0)
+            embedded_seqs.append(embedded_seq)
+        z_ctx = torch.stack(embedded_seqs, 0) 
+        z_ctx = self.seq_projection_layer(z_ctx)
+        return z_ctx, a_ctx, p_ctx 
 
     def encode_patterns(self,
                         tokens: Dict[str, torch.LongTensor],
@@ -342,12 +423,13 @@ class SrlVaeClassifier(Model):
             raise ConfigurationError("Prediction loss required but gold labels `labels` is None.")
         
         if not self.ignore_span_metric:
-            if predicates is not None:
+            if predicates is not None and not isinstance(self.span_metric, DependencyBasedF1Measure):
                 self.span_metric(logits[pivot:], labels[pivot:], mask=mask[pivot:], predicates=predicates[pivot:])
             else:
                 self.span_metric(logits[pivot:], labels[pivot:], mask[pivot:])
             
-        if self.suppress_nonarg: # for decoding
+        # if self.suppress_nonarg: # for decoding
+        if arg_mask is not None and arg_indices is not None:
             output_dict['arg_masks'] = arg_mask[pivot:]
             output_dict['arg_idxes'] = arg_indices[pivot:] 
 
@@ -368,6 +450,7 @@ class SrlVaeClassifier(Model):
         all_predictions = output_dict['logits_softmax']
         sequence_lengths = get_lengths_from_binary_sequence_mask(output_dict["mask"]).data.tolist()
         # discard useless stuff in the output dict 
+        # print(output_dict.keys())
         returned_dict = {"tokens": output_dict["tokens"], 
                          "lemmas": output_dict["lemmas"],
                          "pos_tags": output_dict["pos_tags"],
@@ -381,7 +464,8 @@ class SrlVaeClassifier(Model):
             predictions_list = [all_predictions]
         all_tags = []
         
-        if self.suppress_nonarg:
+        # if self.suppress_nonarg:
+        if "arg_masks" in output_dict and "arg_idxes" in output_dict: 
             arg_masks = output_dict["arg_masks"]
             arg_idxes = output_dict["arg_idxes"]
             

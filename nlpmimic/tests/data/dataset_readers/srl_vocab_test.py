@@ -181,10 +181,9 @@ class TestConll2009Reader():
         print('\n|vocab of predicates| is {}'.format(len(conll_reader.predicate_set)))
         print('|vocab of predicates| is {}'.format(len(predicate_dict)))
 
-    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
-    def test_vocabulary_file(self, lazy, move):
+    def test_predicate_file(self, lazy, move):
         conll_reader = Conll2009DatasetReader(lazy=True, 
                                               feature_labels=['pos', 'dep'], 
                                               moved_preposition_head=['IN', 'TO'],
@@ -196,10 +195,13 @@ class TestConll2009Reader():
         #ifile = droot + 'noun.bit'
 
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
-        ifile = droot + 'verb.vocab.src'
-        ofile = droot + 'verb.all.predicate.vocab'
+        #ifile = droot + 'verb.vocab.src'
+        #ofile = droot + 'verb.all.predicate.vocab'
 
         #ifile = droot + 'vocab.src'
+
+        ifile = droot + 'all.morph.only.vocab.src'
+        ofile = droot + 'all.morph.only.predicate.vocab' 
 
 
         instances = conll_reader.read(ifile)
@@ -226,6 +228,7 @@ class TestConll2009Reader():
                 fw.write('\n')
 
 
+    @pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
     def test_vocabulary_file(self, lazy, move):
@@ -242,9 +245,11 @@ class TestConll2009Reader():
         #ifile = droot + 'noun.bit'
 
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
-        ifile = droot + 'noun.vocab.src'
+        #ifile = droot + 'noun.vocab.src'
+        ifile = droot + 'all.morph.only.vocab.src'
         
-        ofile = droot + 'noun.all.moved.arg.vocab' 
+        #ofile = droot + 'noun.all.moved.arg.vocab' 
+        ofile = droot + 'all.morph.only.moved.arg.vocab' 
         instances = conll_reader.read(ifile)
         
         arg_dict = Counter()
@@ -267,7 +272,7 @@ class TestConll2009Reader():
                 """
                 arg_dict[lemma] += 1 
         
-        return
+        #return
 
         with open(ofile, 'w') as fw:
             for k, v in arg_dict.most_common():

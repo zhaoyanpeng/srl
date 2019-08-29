@@ -300,7 +300,8 @@ class Conll2009DatasetReader(DatasetReader):
     """
     _DUMMY = '_'
     _EMPTY_LABEL = 'O'
-    _EMPTY_LEMMA = 'M' # masked lemma
+    _EMPTY_LEMMA = '@@UNKNOWN@@' # masked lemma
+    _EMPTY_PREDICATE = '@@UNKNOWN@@'
     _WILD_NUMBER = 'NNN'
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
     _RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
@@ -350,6 +351,8 @@ class Conll2009DatasetReader(DatasetReader):
                 lemma_dict = Counter() 
                 with open(lemma_file, 'r') as lemmas:
                     for line in lemmas:
+                        if not line.strip():
+                            continue
                         k, v = line.strip().split()
                         lemma_dict[k] += int(v)
                 # construct vocab
@@ -370,10 +373,16 @@ class Conll2009DatasetReader(DatasetReader):
         try:
             self.predicate_set = None
             if predicate_file is not None:
+                use_json = True if predicate_file.endswith('.json') else False
                 predicate_dict = Counter()
                 with open(predicate_file, 'r') as predicates:
                     for line in predicates:
-                        line = json.loads(line)
+                        if not line.strip():
+                            continue
+                        if use_json:
+                            line = json.loads(line)
+                        else:
+                            line = line.strip().split()
                         k, v = line[0], int(line[1])
                         predicate_dict[k] += int(v)
                 # construct vocab
@@ -393,9 +402,11 @@ class Conll2009DatasetReader(DatasetReader):
     
     def filter_lemmas(self, lemmas: List[str], sentence: Conll2009Sentence) -> List[str]:
         if self.flatten_number: # replace numbers with ...
-            pos_tags = sentence.pos_tags 
-            if len(pos_tags) <= 0:
+            pos_tags = list(set(sentence.pos_tags))  
+            if len(pos_tags) == 1 and pos_tags[0] == self._DUMMY:
                 pos_tags = sentence.predicted_pos_tags 
+            else:
+                pos_tags = sentence.pos_tags
             for idx, lemma in enumerate(lemmas):
                 if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
                     if len(sentence.tokens) > 0:
@@ -428,6 +439,7 @@ class Conll2009DatasetReader(DatasetReader):
         # if `file_path` is a URL, redirect to the cache
         file_path = cached_path(file_path)
         cnt: int = 0
+        xll: int = 0
         xxl: int = 0 
         isample: int = 0
         for sentence in self._sentences(file_path): 
@@ -461,15 +473,16 @@ class Conll2009DatasetReader(DatasetReader):
                                             self.instance_type)
             else:
                 for (predicate_index, predicate, labels) in sentence.srl_frames:
-                    if self.predicate_set is not None and \
-                        predicate not in self.predicate_set:
-                        xxl += 1
-                        continue
-
                     srl_labels = list(set(labels))
                     if not self.allow_null_predicate and \
                         len(srl_labels) == 1 and srl_labels[0] == self._EMPTY_LABEL:
                         continue
+
+                    if self.predicate_set is not None and \
+                        predicate not in self.predicate_set:
+                        #continue
+                        xll += 1
+                        predicate = self._EMPTY_PREDICATE
 
                     if self.min_valid_lemmas and not self.is_valid_lemmas(lemmas, labels):
                         xxl += 1                 
@@ -490,7 +503,7 @@ class Conll2009DatasetReader(DatasetReader):
                                                 head_ids,
                                                 dep_rels,
                                                 self.instance_type) 
-        logger.info("{} sentences, {} instances, {} skipped instances".format(cnt, isample, xxl))
+        logger.info("{} sentences, {} instances, {} skipped instances, {} modified predicates".format(cnt, isample, xxl, xll))
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],
