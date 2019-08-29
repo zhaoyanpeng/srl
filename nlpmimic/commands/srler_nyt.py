@@ -144,7 +144,7 @@ class _PredictManager:
         self._dataset_reader = ConllxUnlabeledDatasetReader(
                                  token_indexers = {'elmo': ELMoTokenCharactersIndexer(namespace='elmo')},
                                  feature_labels = ['pos', 'dep'], 
-                                 move_preposition_head = False,
+                                 move_preposition_head = True,
                                  allow_null_predicate = True,
                                  instance_type = 'basic') # pylint: disable=protected-access
 
