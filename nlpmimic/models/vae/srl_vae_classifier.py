@@ -189,7 +189,6 @@ class SrlVaeClassifier(Model):
             tokens = all_tokens.masked_fill(mask, 1) 
             tokens = {'elmo': tokens}
 
-
         # encoding skeletons    
         embedded_tokens = self.token_embedder(tokens)
         embedded_tokens = self.token_dropout(embedded_tokens)

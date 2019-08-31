@@ -93,10 +93,10 @@
 
     "model": {
         "autoencoder": {
-            "type": "srl_lstms_ae_z",
+            "type": "srl_ae_hub_z",
             "kl_alpha": 0.0,
             "ll_alpha": 1.0,
-            "nsample": 1,
+            "n_sample": 1,
             "b_z_mean": false,
             "b_ctx_argument": false,
             "b_ctx_predicate": false,
@@ -170,7 +170,7 @@
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_z",
+        "type": "srl_vae_hub_z",
         "n_sample": 5,
         "ll_alpha": 0.5,
         "reweight": true, 

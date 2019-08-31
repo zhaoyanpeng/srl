@@ -7,13 +7,13 @@ from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 
-@Model.register("srl_vae_d")
+@Model.register("srl_vae_hub")
 class VaeSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  classifier: Model,
                  autoencoder: Model,
-                 alpha: float = 0.0,
-                 nsampling: int = 10,
+                 n_sample: int = 10,
+                 ll_alpha: float = 0.0,
                  kl_prior: str = None,
                  reweight: bool = True,
                  straight_through: bool = True,
@@ -26,8 +26,8 @@ class VaeSemanticRoleLabeler(Model):
         self.classifier = classifier
         self.autoencoder = autoencoder
 
-        self.alpha = alpha
-        self.nsampling = nsampling
+        self.ll_alpha = ll_alpha
+        self.n_sample = n_sample
         self.kl_prior = kl_prior
         self.reweight = reweight
         self.straight_through = straight_through
@@ -103,11 +103,11 @@ class VaeSemanticRoleLabeler(Model):
 
             output_dict['L'] = L 
             output_dict['C'] = C 
-            output_dict['loss'] = L + self.alpha * C 
+            output_dict['loss'] = L + self.ll_alpha * C 
             output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
         else: ### unlabled halve
             y_logs, y_ls, y_lprobs, lls, kls = [], [], [], [], []
-            for _ in range(self.nsampling):
+            for _ in range(self.n_sample):
                 gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
                     self.classifier.gumbel_relax(argument_mask, arg_logits)
                 # used in decoding

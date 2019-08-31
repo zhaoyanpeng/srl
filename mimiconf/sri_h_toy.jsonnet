@@ -24,13 +24,9 @@
 
     "model": {
         "autoencoder": {
-            "type": "srl_ae_hub_z",
-            "kl_alpha": 0.5,
+            "type": "srl_ae_hub",
+            "kl_alpha": 0.0,
             "ll_alpha": 1.0,
-            "n_sample": 1,
-            "b_z_mean": false,
-            "b_ctx_argument": false,
-            "b_ctx_predicate": false,
             //"decoder": {
             //    "type": "srl_graph_decoder",
             //    "input_dim": 20,  // predicate + label + (lemmas + roles),
@@ -46,9 +42,7 @@
                 "dropout": 0.1,
             },
             "sampler": {
-                "type": "gaussian",
-                "input_dim": 5,
-                "output_dim": 2,
+                "type": "uniform",
             }
         },
 
@@ -94,34 +88,23 @@
                 "recurrent_dropout_probability": 0.0,
                 "use_highway": true
             },
-            "ctx_encoder": {
-                "type": "stacked_bidirectional_lstm",
-                "input_size": 4,
-                "hidden_size": 2,
-                "num_layers": 1,
-                "recurrent_dropout_probability": 0.0,
-                "use_highway": false 
-            },
             "tau": 0.01,
             "tunable_tau": false,
             "psign_dim": 2,
-            "seq_projection_dim": 5,
-            "token_dropout": 0.3,
-            "lemma_dropout": 0.3,
-            "label_dropout": 0.3,
-            "predt_dropout": 0.3,
+            "seq_projection_dim": null,
+            "token_dropout": 0.1,
+            "lemma_dropout": 0.1,
+            "label_dropout": 0.1,
+            "predt_dropout": 0.1,
             "embed_lemma_ctx": true,
             "suppress_nonarg": true,
         },
 
-        "type": "srl_vae_hub_z",
+        "type": "srl_vae_hub",
         "n_sample": 1,
         "ll_alpha": 0.5,
         "reweight": false, 
         "kl_prior": "null",
-        "prior_type": "uniform",
-        "max_pooling": true,
-        "rm_argument": true,
         "straight_through": true,
         "continuous_label": false,
     },
@@ -137,7 +120,7 @@
         "patience": 20,
         "shuffle": false,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 1,
+        "cuda_device": -1,
         "noun_loss_scalar": 1.0,
         "verb_loss_scalar": 1.0,
         "gen_skip_nepoch": 0,

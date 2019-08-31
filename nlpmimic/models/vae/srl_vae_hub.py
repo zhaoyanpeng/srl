@@ -12,8 +12,8 @@ from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_lo
 
 from nlpmimic.modules.seq2vec_encoders.sampler import SamplerUniform
 
-@Model.register("srl_lstms_ae_z")
-class SrlzLstmsAutoencoder(Model):
+@Model.register("srl_ae_hub")
+class SrlHubAutoencoder(Model):
     def __init__(self, vocab: Vocabulary,
                  encoder: Seq2VecEncoder = None, # a latent z
                  decoder: Seq2SeqEncoder = None, # a sequence of recovered inputs (e.g., arguments & contexts)
@@ -22,25 +22,25 @@ class SrlzLstmsAutoencoder(Model):
                  ll_alpha: float = 1.0,   # ll weight
                  re_alpha: float = 0.5,   # regularizer for duplicate roles in an instance
                  re_type: str = 'relu',   # type of regularizer: kl or relu
-                 nsample: int = 1,        # # of samples from the posterior distribution 
+                 n_sample: int = 1,        # # of samples from the posterior distribution 
                  b_z_mean: bool = False,  # use the mean value not the sampled ones
                  b_ctx_argument: bool = False,  # contextualized arguments 
                  b_ctx_predicate: bool = False, # b: boolean value
                  label_smoothing: float = None, # in the generative model
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
-        super(SrlzLstmsAutoencoder, self).__init__(vocab, regularizer)
-        self.signature = 'srl_lstms_ae'
+        super(SrlHubAutoencoder, self).__init__(vocab, regularizer)
+        self.signature = 'srl_ae_hub'
         
         self.encoder = encoder
         self.decoder = decoder
         self.sampler = sampler
-        self.nsample = nsample
         self.re_type = re_type
         self._label_smoothing = label_smoothing
         self._b_ctx_predicate = b_ctx_predicate
         self._b_ctx_argument = b_ctx_argument
         self._b_z_mean = b_z_mean
         
+        self.n_sample = n_sample
         self.kl_alpha = kl_alpha
         self.ll_alpha = ll_alpha
         self.re_alpha = re_alpha
@@ -61,34 +61,17 @@ class SrlzLstmsAutoencoder(Model):
                 edge_types: torch.Tensor,
                 embedded_edges: torch.Tensor,
                 ctx_lemmas: torch.Tensor,
-                ctx_global: Tuple[torch.Tensor],
                 edge_type_onehots: torch.Tensor = None,
                 contexts: torch.Tensor = None) -> torch.Tensor:
         batch_size, nnode = mask.size()
-        # contextualized arguments and predicates
-        z_ctx, a_ctx, p_ctx = ctx_global
-        # (batch_size, nsample, dim)
-        z = self.sampler(z_ctx, nsample=self.nsample) 
-        z_mu, z_std = self.sampler.mu, self.sampler.std
-        kld = self._kld_simple(z_mu, z_std) 
-        # feature dimension, then sample dimension
-        kld = torch.mean(torch.sum(kld, -1), -1) 
-        self.kldistance = self.kl_alpha * kld 
-        # optional choice, false by default
         embedded_lemmas = embedded_nodes[:, 1:, :]
         embedded_predicates = embedded_nodes[:, [0], :]
-        if self._b_ctx_predicate:
-            embedded_predicates = p_ctx
-        if self._b_ctx_argument:
-            embedded_lemmas = a_ctx
-        if self._b_z_mean:
-            z = z_mu
-
-
+         
         context = None
         if ctx_lemmas is not None: 
             # be aware of other lemmas p(a_i | a-i)
-            labeled_lemmas = torch.cat([embedded_lemmas, embedded_edges], -1)
+            encoded_lemmas = embedded_nodes[:, 1:, :]
+            labeled_lemmas = torch.cat([encoded_lemmas, embedded_edges], -1)
             labeled_lemmas = labeled_lemmas * mask.unsqueeze(-1).float()
             # sum all the other labeled arguments 
             labeled_lemmas_sum = torch.sum(labeled_lemmas, -2, keepdim=True)
@@ -99,24 +82,23 @@ class SrlzLstmsAutoencoder(Model):
             context = context / divider
 
             context[:, :, :ctx_lemmas.size(-1)] += ctx_lemmas
+            """
+            alp = 0.2 # heuristic
+            old = context[:, :, :ctx_lemmas.size(-1)]
+            context[:, :, :ctx_lemmas.size(-1)] = (1 - alp) * old + alp * ctx_lemmas
+            """
 
-        mask = mask.unsqueeze(0).expand(self.nsample, -1, -1)
+        mask = mask.unsqueeze(0).expand(self.n_sample, -1, -1)
         mask = mask.contiguous().view([-1, nnode])
         # reconstruction (argument) loss (batch_size,)
-        logits = self.decoder(z, embedded_edges, embedded_predicates, nodes_contexts=context)
+        logits = self.decoder(None, embedded_edges, embedded_predicates, nodes_contexts=context)
         logits = logits.view([-1, nnode, logits.size(-1)])
 
-
         # reconstruction (argument) loss (batch_size,)
-        #logits = self.decoder(z, embedded_edges, embedded_predicates)
         llh = self._likelihood(mask, logits, node_types, average = None) 
         self.likelihood = self.ll_alpha * llh 
 
         return -self.likelihood 
-
-    def _kld_simple(self, mu, std):
-        var = torch.pow(std, 2) + 1e-15 # sanity check
-        return -0.5 * (torch.log(var) - var - torch.pow(mu, 2) + 1) 
 
     def kld(self,
             posteriors, # logrithm 
@@ -142,12 +124,12 @@ class SrlzLstmsAutoencoder(Model):
                 #kl_loss = torch.mean(kl_loss)
 
                 # loss on sentence level
-                self.kldistance = self.kl_alpha * kl_loss 
+                kl_loss = self.kl_alpha * kl_loss 
             else:
-                self.kldistance = self.kl_alpha * posteriors
+                kl_loss = self.kl_alpha * posteriors
         else:
-            self.kldistance = self.kl_alpha * posteriors 
-        return self.kldistance 
+            kl_loss = self.kl_alpha * posteriors 
+        return kl_loss 
 
     def _likelihood(self,
                     mask: torch.Tensor,

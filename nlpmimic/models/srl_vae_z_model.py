@@ -7,7 +7,7 @@ from allennlp.data import Vocabulary
 from allennlp.models.model import Model
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 
-@Model.register("srl_vae_z")
+@Model.register("srl_vae_hub_z")
 class VaeSemanticRoleLabeler(Model):
     def __init__(self, vocab: Vocabulary,
                  classifier: Model,
@@ -48,7 +48,8 @@ class VaeSemanticRoleLabeler(Model):
 
         self.tau = self.classifier.tau
         initializer(self)
-    
+
+    #@profile    
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
                 lemmas: Dict[str, torch.LongTensor],
@@ -116,8 +117,10 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['L'] = L 
             output_dict['C'] = C 
             output_dict['loss'] = L + self.ll_alpha * C 
-            output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
-            output_dict['KL'] = torch.mean(self.autoencoder.kldistance)
+            if self.autoencoder.likelihood is not None:
+                output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
+            if self.autoencoder.kldistance is not None:
+                output_dict['KL'] = torch.mean(self.autoencoder.kldistance)
         else: ### unlabled halve
             y_logs, y_ls, y_lprobs, lls, kls = [], [], [], [], []
             for _ in range(self.n_sample):
@@ -130,8 +133,10 @@ class VaeSemanticRoleLabeler(Model):
                 onehots = labels_relaxed if self.continuous_label else None
                 L_y = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, 
                     sampled_labels, encoded_labels, lemma_ctx, skeletons, edge_type_onehots = onehots)
-                lls.append(self.autoencoder.likelihood)
-                kls.append(self.autoencoder.kldistance)
+                if self.autoencoder.likelihood is not None:
+                    lls.append(self.autoencoder.likelihood)
+                if self.autoencoder.kldistance is not None:
+                    kls.append(self.autoencoder.kldistance)
                 
                 # log posteriors
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
@@ -172,13 +177,14 @@ class VaeSemanticRoleLabeler(Model):
             output_dict['L_u'] = L_u 
             output_dict['H'] = H 
             output_dict['loss'] = L_u + H 
-
-            lls = torch.stack(lls, 0)
-            kls = torch.stack(kls, 0)
-            if (kls < 0).any():
-                raise ValueError('KL should be non-negative.') 
-            output_dict['KL'] = torch.mean(kls) 
-            output_dict['LL'] = torch.mean(lls)
+            
+            if len(lls) > 0 and len(kls) > 0:
+                lls = torch.stack(lls, 0)
+                kls = torch.stack(kls, 0)
+                if (kls < 0).any():
+                    raise ValueError('KL should be non-negative.') 
+                output_dict['KL'] = torch.mean(kls) 
+                output_dict['LL'] = torch.mean(lls)
 
         return output_dict 
 

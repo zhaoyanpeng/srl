@@ -7,7 +7,7 @@ proot="/afs/inf.ed.ac.uk/user/s18/s1847450/Code/nlpmimic"
 droot="/disk/scratch1/s1847450"
 param_path="$proot/mimiconf"
 
-model_name="sri_vae_yz_nyt_alpha0.5_128_kl.5_b.z_sp1.5_rw_n20.0_lemma.ctx"
+model_name="sri_vae_yz_alpha0.5_128_kl.0_b.z_sp1.5_rw_n20.0_lemma.ctx"
 param_name="sri_vae_yz_nyt.jsonnet"
 model_path=$droot/model
 
@@ -27,7 +27,7 @@ elif [ $flag = "recover" ]; then
 elif [ $flag = "tune" ]; then
     echo "Deleting "$this_model
     rm $this_model/* -rf
-    allennlp train $param_path/$param_name -s $this_model --include-package $library
+    allennlp train $param_path/$param_name -s $this_model --include-package $library  
 else
     allennlp train $param_path/$param_name -s $this_model --include-package $library
 fi
