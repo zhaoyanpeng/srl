@@ -45,6 +45,7 @@ class SrlVaeClassifier(Model):
                  predt_dropout: float = 0.,
                  label_smoothing: float = None,
                  embed_lemma_ctx: bool = False,
+                 calc_seq_vector: bool = False,
                  metric_type: str = 'dependency',
                  ignore_span_metric: bool = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -93,6 +94,7 @@ class SrlVaeClassifier(Model):
                 Linear(self.seq_encoder.get_output_dim(), self.nclass))
         
         # feature space transformation
+        self.calc_seq_vector = calc_seq_vector
         self.seq_projection_dim = seq_projection_dim
         self.seq_projection_layer = None
         if self.seq_projection_dim is not None:
@@ -129,7 +131,7 @@ class SrlVaeClassifier(Model):
         embedded_tokens_and_psigns = torch.cat([embedded_tokens, embedded_psigns], -1)
         seq_length = embedded_tokens_and_psigns.size(1) # (batch_size, length, dim)
         
-        if True or self.seq_projection_layer is None:
+        if not self.calc_seq_vector:
             encoded_token = self.seq_encoder(embedded_tokens_and_psigns, mask)
             embedded_seqs = None
         else: # the 'seq_encoder' can also produce a sequence embedding
@@ -160,35 +162,37 @@ class SrlVaeClassifier(Model):
                         rm_argument: bool = False,        # remove encoded arguments
                         lemma_embedder: TextFieldEmbedder = None,
                         lemmas: Dict[str, torch.LongTensor] = None) -> Dict[str, torch.Tensor]:
+        batch_size = predicate_sign.size(0) 
+        token_mask = get_text_field_mask(tokens)
+        seq_lengths = get_lengths_from_binary_sequence_mask(token_mask).data.tolist()
+
         arg_token_idx = self.vocab.get_token_index("NULL_TOKEN", namespace="tokens")
         arg_lengths = get_lengths_from_binary_sequence_mask(arg_mask).data.tolist()
-
-        this_tokens = []
+        
+        # creat mask tensor to keep desired items
+        mask = token_mask.clone().detach().fill_(1) # (bsize, len)
+        mask.scatter_(1, arg_indices, 0)   # remove arguments 
+        # check if there is a 0-indexed argument
+        arg_indx = arg_indices + (arg_mask == 0).long()
+        arg_indx = (arg_indx == 0).sum(-1) # check index 0
+        pad_mask = arg_indx == 0
+        mask[:, 0].masked_fill_(pad_mask, 1)
+        mask = (mask == 0).unsqueeze(-1)
+        
+        # mask arguments
         if 'tokens' in tokens:
             all_tokens = tokens['tokens']
-            for i, length in enumerate(arg_lengths):
-                tokens = all_tokens[i].scatter(0, arg_indices[i][:length], arg_token_idx)
-                this_tokens.append(tokens)
-            #x = self.vocab.get_token_from_index(arg_token_idx, namespace="tokens") 
-            tokens = {'tokens': torch.stack(this_tokens, 0)}
-            #print(tokens['tokens'].size())
+            tokens = all_tokens.masked_fill(mask.squeeze(-1), arg_token_idx) 
+            tokens = {'tokens': tokens}
         elif 'elmo' in tokens:
             all_tokens = tokens['elmo']
-            batch_size, _, dim = all_tokens.size()
-            for i, length in enumerate(arg_lengths):
-                this_arg_indices = arg_indices[i][:length].unsqueeze(-1).expand(-1, dim)
-                tokens = all_tokens[i].scatter(0, this_arg_indices, 1)
-                this_tokens.append(tokens)
-            tokens = {'elmo': torch.stack(this_tokens, 0)}
-            #print(tokens['elmo'].size())
-        
+            tokens = all_tokens.masked_fill(mask, 1) 
+            tokens = {'elmo': tokens}
+
+
         # encoding skeletons    
         embedded_tokens = self.token_embedder(tokens)
         embedded_tokens = self.token_dropout(embedded_tokens)
-
-        batch_size = embedded_tokens.size(0) 
-        token_mask = get_text_field_mask(tokens)
-        seq_lengths = get_lengths_from_binary_sequence_mask(token_mask).data.tolist()
 
         embedded_psigns = self.psign_embedder(predicate_sign)
         embedded_tokens_and_psigns = torch.cat([embedded_tokens, embedded_psigns], -1)
@@ -213,18 +217,15 @@ class SrlVaeClassifier(Model):
         
         embedded_seqs = [] 
         dummy = -1e15 if max_pooling else 0
-        for i, (a_len, t_len) in enumerate(zip(arg_lengths, seq_lengths)):
-            if rm_argument:
-                idxes = arg_indices[i][:a_len].unsqueeze(-1).expand(-1, token_dim)
-                encoded_tokens[i].scatter_(0, idxes, dummy)
-            embedded_seq = encoded_tokens[i, :t_len, :]
-            if max_pooling:
-                embedded_seq = embedded_seq.max(0)[0]
-            else: # mean pooling
-                embedded_seq = embedded_seq.mean(0)
-            embedded_seqs.append(embedded_seq)
-        z_ctx = torch.stack(embedded_seqs, 0) 
-        z_ctx = self.seq_projection_layer(z_ctx)
+        if rm_argument: # and padding items
+            mask = mask | (token_mask.unsqueeze(-1) == 0)
+            encoded_tokens = encoded_tokens.masked_fill(mask, dummy) 
+        if max_pooling:
+            embedded_seqs = encoded_tokens.max(1)[0]
+        else:
+            divider = token_mask.sum(-1, keepdim=True).float() # (bsize, 1)
+            embedded_seqs = encoded_tokens.sum(1) / divider 
+        z_ctx = self.seq_projection_layer(embedded_seqs)
         return z_ctx, a_ctx, p_ctx 
 
     def encode_patterns(self,
