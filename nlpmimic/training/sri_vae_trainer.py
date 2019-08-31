@@ -24,7 +24,7 @@ from allennlp.training import util as training_util
 from nlpmimic.training import util as mimic_training_util
 from nlpmimic.training.util import DataSampler, DataLazyLoader 
 from nlpmimic.training.tensorboard_writer import GanSrlTensorboardWriter
-torch.autograd.set_detect_anomaly(True)
+#torch.autograd.set_detect_anomaly(True)
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 @TrainerBase.register("sri_vae")
