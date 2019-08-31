@@ -26,7 +26,10 @@
         "autoencoder": {
             "type": "srl_ae_hub_z",
             "kl_alpha": 0.5,
+            "ky_alpha": 0.5,
+            "ky_prior": "uniform",
             "ll_alpha": 1.0,
+            "re_alpha": 0.5,
             "n_sample": 1,
             "b_z_mean": false,
             "b_ctx_argument": false,

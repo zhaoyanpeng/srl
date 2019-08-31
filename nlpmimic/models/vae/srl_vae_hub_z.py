@@ -18,7 +18,9 @@ class SrlHubzAutoencoder(Model):
                  encoder: Seq2VecEncoder = None, # a latent z
                  decoder: Seq2SeqEncoder = None, # a sequence of recovered inputs (e.g., arguments & contexts)
                  sampler: Seq2VecEncoder = None, # posterior distribution
-                 kl_alpha: float = 1.0,   # kl weight
+                 kl_alpha: float = 1.0,   # kl(q(z) | p(z)) 
+                 ky_alpha: float = 1.0,   # log p(y) 
+                 ky_prior: str = 'uniform', # uniform or gumbel
                  ll_alpha: float = 1.0,   # ll weight
                  re_alpha: float = 0.5,   # regularizer for duplicate roles in an instance
                  re_type: str = 'relu',   # type of regularizer: kl or relu
@@ -42,6 +44,8 @@ class SrlHubzAutoencoder(Model):
         
         self.n_sample = n_sample
         self.kl_alpha = kl_alpha
+        self.ky_alpha = ky_alpha
+        self.ky_prior = ky_prior
         self.ll_alpha = ll_alpha
         self.re_alpha = re_alpha
 
@@ -49,6 +53,8 @@ class SrlHubzAutoencoder(Model):
         self.likelihood = None 
     
     def add_parameters(self, nlabel: int, nlemma: int, lemma_embedder: TextFieldEmbedder):
+        self.nlabel = nlabel # needed in computing log p(y) = \sum log p(y_i)
+        self.nlemma = nlemma # 
         if self.encoder is not None:
             self.encoder.add_parameters(nlabel)
         if self.decoder is not None:
@@ -88,6 +94,7 @@ class SrlHubzAutoencoder(Model):
             self.kldistance = None 
             z = None
 
+
         context = None
         if ctx_lemmas is not None: 
             # be aware of other lemmas p(a_i | a-i)
@@ -115,42 +122,56 @@ class SrlHubzAutoencoder(Model):
         llh = self._likelihood(mask, logits, node_types, average = None) 
         self.likelihood = self.ll_alpha * llh 
 
-        return -self.likelihood 
+        # -L(x, y) = ELBO = E_{z ~ q}[log p(x | y, z) + log p(y) + log p(z) - log q(z | x, y)]
+        elbo = -self.likelihood
+        if self.kldistance is not None:
+            elbo = elbo - self.kldistance
+        return elbo 
 
     def _kld_simple(self, mu, std):
         var = torch.pow(std, 2) + 1e-15 # sanity check
         return -0.5 * (torch.log(var) - var - torch.pow(mu, 2) + 1) 
 
     def kld(self,
-            posteriors, # logrithm 
+            posteriors = None, # log 
             mask: torch.Tensor = None,
             node_types: torch.Tensor = None,
             embedded_nodes: torch.Tensor = None,  
             embedded_edges: torch.Tensor = None,
             edge_type_onehots: torch.Tensor = None,
             contexts: torch.Tensor = None) -> torch.Tensor:
-        if isinstance(self.sampler, SamplerUniform):
-            if edge_type_onehots is not None:
-                label_onehots = edge_type_onehots * mask.unsqueeze(-1).float()
-                batch_probs = torch.sum(label_onehots, 1) # along argument dim
-                batch_probs.clamp_(min = 1.) # a trick to avoid nan = log(0)
-
-                # probabilities of samples & weighted loss
-                # probabilities = torch.exp(posteriors) # not do this here 
-                kl_loss = torch.log(batch_probs) * batch_probs  
-                kl_loss = torch.sum(kl_loss, 1) # along label dim
-
-                # either of the follows may not be necessary # not do this here
-                #kl_loss = kl_loss * probabilities
-                #kl_loss = torch.mean(kl_loss)
-
-                # loss on sentence level
-                kl_loss = self.kl_alpha * kl_loss 
+        if self.ky_prior == 'uniform': 
+            # priors of role labels: log p(y) = \sum log p(y_i)
+            y_logs = -torch.sum(mask, -1).float() * np.log(self.nlabel)
+            if posteriors is not None:
+                kl_loss = -posteriors + y_logs 
             else:
-                kl_loss = self.kl_alpha * posteriors
-        else:
-            kl_loss = self.kl_alpha * posteriors 
-        return kl_loss 
+                kl_loss = y_logs # priors 
+        elif self.ky_prior == 'gumbel':
+            #euler = 0.5772
+            ratio = self.sampler.tau_ratio
+            gamma = math.gamma(1 + ratio)
+            posteriors = ratio * posteriors * mask.unsqueeze(-1).float()
+            #kl_loss = mast.sum() * (-math.log(ratio) - 1 + euler * (ratio - 1)
+            kl_loss = posteriors.sum() + gamma * torch.exp(-posteriors).sum()
+        else: # use estimated statistics of role labels as priors
+            raise ValueError('Not supported.')
+        kldistance = self.ky_alpha * kl_loss
+
+        uniqueness = None
+        # an additional regularizer for duplicate roles
+        if edge_type_onehots is not None: 
+            label_onehots = edge_type_onehots * mask.unsqueeze(-1).float()
+            batch_probs = torch.sum(label_onehots, 1) # along argument dim
+            if self.re_type == 'kl':
+                batch_probs.clamp_(min = 1.)   # a trick to avoid nan = log(0)
+                loss = torch.log(batch_probs) * batch_probs
+                loss = torch.sum(loss, 1) # along label dim
+            elif self.re_type == 'relu':
+                loss = torch.relu(batch_probs - 1).sum() 
+            # loss on the sentence level
+            uniqueness = self.re_alpha * loss 
+        return (kldistance, uniqueness) 
 
     def _likelihood(self,
                     mask: torch.Tensor,

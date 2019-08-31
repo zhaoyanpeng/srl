@@ -78,7 +78,7 @@
     "train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.word/n20.0/train.verb",
     "validation_data_path": "/disk/scratch1/s1847450/data/conll09/morph.only/devel.noun.morph.only",
 
-    //"train_dy_context_path":  "/disk/scratch1/s1847450/data/nytimes.new/morph.word/nyt.verb.20.10.1000",
+    "train_dy_context_path":  "/disk/scratch1/s1847450/data/nytimes.new/morph.word/nyt.verb.20.10.1000",
 
     //"train_dx_path": "/disk/scratch1/s1847450/data/conll09/morph.only/train.noun.morph.only",
     //"train_dy_path": "/disk/scratch1/s1847450/data/conll09/morph.only/train.verb.morph.only",
@@ -95,7 +95,10 @@
         "autoencoder": {
             "type": "srl_ae_hub_z",
             "kl_alpha": 0.0,
+            "ky_alpha": 1.0,
+            "ky_prior": "uniform",
             "ll_alpha": 1.0,
+            "re_alpha": 0.0,
             "n_sample": 1,
             "b_z_mean": false,
             "b_ctx_argument": false,
@@ -169,8 +172,8 @@
         },
 
         "type": "srl_vae_hub_z",
-        "n_sample": 1,
-        "ll_alpha": 0.5,
+        "n_sample": 5,
+        "ll_alpha": 0.1,
         "reweight": true, 
         "kl_prior": null,
         "prior_type": "uniform",
@@ -192,7 +195,7 @@
         "shuffle": true,
         "num_serialized_models_to_keep": 1,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 0,
+        "cuda_device": 2,
         "noun_loss_scalar": 1.0,
         "verb_loss_scalar": 1.0,
         "gen_skip_nepoch": 0,

@@ -110,19 +110,20 @@ class VaeSemanticRoleLabeler(Model):
             # used in decoding
             encoded_labels = self.classifier.embed_labels(arg_labels, labels_add_one=True)  
 
+            y_log, _ = self.autoencoder.kld(mask = argument_mask)
             L = self.autoencoder(argument_mask, arg_lemmas, embedded_nodes, 
                 arg_labels, encoded_labels, lemma_ctx, skeletons)
-            L, C = -torch.mean(L), torch.mean(C) 
 
+            L, C = -torch.mean(L + y_log), torch.mean(C) 
             output_dict['L'] = L 
             output_dict['C'] = C 
-            output_dict['loss'] = L + self.ll_alpha * C 
+            output_dict['loss'] = L + self.ll_alpha * C  
             if self.autoencoder.likelihood is not None:
                 output_dict['LL'] = torch.mean(self.autoencoder.likelihood)
             if self.autoencoder.kldistance is not None:
                 output_dict['KL'] = torch.mean(self.autoencoder.kldistance)
         else: ### unlabled halve
-            y_logs, y_ls, y_lprobs, lls, kls = [], [], [], [], []
+            y_logs, y_ls, y_lprobs, lls, kls, uniques = [], [], [], [], [], []
             for _ in range(self.n_sample):
                 gumbel_hard, gumbel_soft, gumbel_soft_log, sampled_labels = \
                     self.classifier.gumbel_relax(argument_mask, arg_logits)
@@ -141,19 +142,22 @@ class VaeSemanticRoleLabeler(Model):
                 # log posteriors
                 hard_lprobs = (gumbel_hard * gumbel_soft_log).sum(-1)
                 hard_lprobs = hard_lprobs.masked_fill(argument_mask == 0, 0)
-                y_log = torch.sum(hard_lprobs, -1) # posteriros
+                y_log = torch.sum(hard_lprobs, -1) 
 
-                y_lprobs.append(y_log)
+                y_lprobs.append(y_log) # posteriros
 
                 # kl term, we may use a pretrained decoder to compute priors of y
                 # TODO currently it is the same as entropy
                 onehots = gumbel_hard if self.kl_prior is not None else None
-                y_log = self.autoencoder.kld(y_log, 
-                                             mask = argument_mask, 
-                                             node_types = arg_lemmas, 
-                                             embedded_nodes = embedded_nodes, 
-                                             embedded_edges = encoded_labels, 
-                                             edge_type_onehots = onehots)
+                y_log, uniqueness = self.autoencoder.kld(
+                                            posteriors = None, 
+                                            mask = argument_mask, 
+                                            node_types = arg_lemmas, 
+                                            embedded_nodes = embedded_nodes, 
+                                            embedded_edges = encoded_labels,
+                                            edge_type_onehots = onehots)
+                if uniqueness is not None:
+                    uniques.append(uniqueness)
                 y_logs.append(y_log)
                 y_ls.append(L_y)
 
@@ -166,18 +170,23 @@ class VaeSemanticRoleLabeler(Model):
             y_probs = torch.exp(y_logs)
             if self.reweight:
                 y_probs = y_probs.softmax(0)
-            y_ls = y_ls * y_probs
-            
-            H = torch.log(y_probs + self.minimum_float) * y_probs
 
-            H = -H.sum(0)
-            L_u = -y_ls.sum(0)
-            L_u, H = torch.mean(L_u), torch.mean(H) 
+            y_ls = (y_ls + y_logs) * y_probs
+            H = torch.log(y_probs + self.minimum_float) * y_probs
+            
+            L_u, H = y_ls.sum(0), H.sum(0)
+            L_u, H = -torch.mean(L_u), -torch.mean(H) 
 
             output_dict['L_u'] = L_u 
             output_dict['H'] = H 
-            output_dict['loss'] = L_u + H 
+            output_dict['loss'] = L_u + H # u = L_u - H
             
+            if len(uniques) > 0: # loss > 0 to be minimized
+                uniques = torch.stack(uniques, 0)
+                uniques = torch.mean(uniques, 0)
+                uniques = torch.mean(uniques)
+                output_dict['kl_loss'] = uniques 
+
             if len(lls) > 0 and len(kls) > 0:
                 lls = torch.stack(lls, 0)
                 kls = torch.stack(kls, 0)
@@ -185,7 +194,6 @@ class VaeSemanticRoleLabeler(Model):
                     raise ValueError('KL should be non-negative.') 
                 output_dict['KL'] = torch.mean(kls) 
                 output_dict['LL'] = torch.mean(lls)
-
         return output_dict 
 
     @overrides
