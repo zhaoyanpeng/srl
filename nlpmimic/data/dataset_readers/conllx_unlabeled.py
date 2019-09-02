@@ -303,7 +303,7 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
                         break
                 if isample >= firstk:
                     break
-        logger.info("{} sentences, {} instances, {} skipped instances, {} modified predicates".format(cnt, isample, xxl, xll))
+        logger.info("{} sentences, {} instances, {} skipped instances, {} modified predicates".format(cnt, isample, llx, xll))
 
     def text_to_instance(self, # type: ignore
                          tokens: List[Token],

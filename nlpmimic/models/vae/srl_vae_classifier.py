@@ -98,8 +98,11 @@ class SrlVaeClassifier(Model):
         self.seq_projection_dim = seq_projection_dim
         self.seq_projection_layer = None
         if self.seq_projection_dim is not None:
-            self.seq_projection_layer = \
-                Linear(self.seq_encoder.get_output_dim(), self.seq_projection_dim)
+            if ctx_encoder is not None:
+                dim = self.ctx_encoder.get_output_dim()
+            else:
+                dim = self.seq_encoder.get_output_dim()
+            self.seq_projection_layer = Linear(dim, self.seq_projection_dim)
         
         self.ignore_span_metric = ignore_span_metric
 
