@@ -125,6 +125,7 @@ class SrlHubzAutoencoder(Model):
         # -L(x, y) = ELBO = E_{z ~ q}[log p(x | y, z) + log p(y) + log p(z) - log q(z | x, y)]
         elbo = -self.likelihood
         if self.kldistance is not None:
+            self.kldistance.clamp_(max=100) # heuristics avoiding loss explosion
             elbo = elbo - self.kldistance
         return elbo 
 

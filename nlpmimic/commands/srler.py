@@ -49,7 +49,7 @@ from allennlp.models.archival import load_archive
 from allennlp.predictors.predictor import Predictor, JsonDict
 from allennlp.data import Instance
 
-from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
+from nlpmimic.data.dataset_readers.conll2009 import Conll2009DatasetReader, Conll2009Sentence
 
 class Srler(Subcommand):
     def add_subparser(self, name: str, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -119,6 +119,21 @@ class _PredictManager:
         self._print_to_console = print_to_console
         
         self._dataset_reader = predictor._dataset_reader # pylint: disable=protected-access
+        """
+        self._dataset_reader = Conll2009DatasetReader(
+                                token_indexers = {'elmo': ELMoTokenCharactersIndexer(namespace='elmo')},
+                                valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", 
+                                    "AM-ADV", "AM-CAU", "AM-DIR", "AM-EXT", "AM-LOC", 
+                                    "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"],
+                                lemma_file = "/disk/scratch1/s1847450/data/conll09/morph.only/all.morph.only.moved.arg.vocab.json",
+                                lemma_use_firstk = 20,
+                                feature_labels = ["pos", "dep"],
+                                moved_preposition_head = ["IN", "TO"],
+                                flatten_number = True,
+                                max_num_argument = 7,
+                                instance_type = "srl_graph",
+                                allow_null_predicate = True) # pylint: disable=protected-access
+        """
 
     def _prediction_to_str(self, output_dict: JsonDict, restore_head: bool = True) -> str:
         tokens = output_dict["tokens"]
@@ -185,7 +200,7 @@ class _PredictManager:
     def run(self, restore_head: bool = True) -> None:
         has_reader = self._dataset_reader is not None
         if has_reader:
-            self._dataset_reader.moved_preposition_head = ['IN', 'TO'] if restore_head else [] 
+            #self._dataset_reader.moved_preposition_head = ['IN', 'TO'] if restore_head else [] 
             for batch in lazy_groups_of(self._get_instance_data(), self._batch_size):
                 for gold_instance, result in zip(batch, self._predict_instances(batch, restore_head)):
                     #gold_input = Conll2009Sentence.instance(gold_instance)
@@ -217,8 +232,8 @@ def _predict(args: argparse.Namespace) -> None:
                               args.batch_size,
                               not args.silent)
     try:
-        manager.create_gold_input()
-        manager.run(False)
+        manager.create_gold_input(True)
+        manager.run(restore_head=False)
     except Exception as e:
         manager.close()
         print('err encountered: ', e)
