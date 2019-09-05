@@ -15,6 +15,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
                  input_dim: int, 
                  hidden_dim: int = None,
                  b_ignore_z: bool = False, # b: bool
+                 always_use_z: bool = False,
                  rnn_cell_type: str = 'gru',
                  straight_through: bool = True,
                  always_use_predt: bool = False,
@@ -26,6 +27,7 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
         self._input_dim = input_dim 
         self._hidden_dim = hidden_dim
         self._b_ignore_z = b_ignore_z
+        self._always_use_z = always_use_z
         self._dense_layer_dims = dense_layer_dims 
         self._straight_through = straight_through
         self._always_use_predt = always_use_predt
@@ -96,17 +98,23 @@ class SrlLstmsDecoder(Seq2SeqEncoder):
             hx = torch.zeros((batch_size, self._hidden_dim), device=embedded_labels.device)
             if embedded_predicates.dim() == 3:
                 embedded_predicates = embedded_predicates.squeeze(1)
+            nsample = 1
 
         logits = []
         # predicates and labels will be concatenated together
-        embedded_args = dummy = torch.zeros((batch_size, 0), device=embedded_labels.device)
+        embedded_args = dummy = torch.zeros((nsample * batch_size, 0), device=embedded_labels.device)
         if self._always_use_predt:
             embedded_args = torch.zeros_like(embedded_predicates)
         for i in range(ntimestep):
             if nodes_contexts is not None:
                 embedded_args = nodes_contexts[:, i, :]
 
-            input_i = torch.cat([embedded_predicates, embedded_args, embedded_labels[:, i, :]], -1) 
+            if self._always_use_z and z is not None:
+                input_data = [embedded_predicates, z, embedded_args, embedded_labels[:, i, :]] 
+            else:
+                input_data = [embedded_predicates, embedded_args, embedded_labels[:, i, :]]
+
+            input_i = torch.cat(input_data, -1) 
             hx = self._rnn(input_i, hx) 
             embedded_args, logits_i = self.customize_hidden_states(hx)
 

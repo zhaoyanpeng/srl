@@ -42,8 +42,9 @@
             //},
             "decoder": {
                 "type": "srl_lstms_decoder",
-                "input_dim": 8,  // (300) predicate + label + last or (400) + context,
+                "input_dim": 8,  // (300) predicate + label + last or (400) + context or (500) + z,
                 "hidden_dim": 3, //  
+                "always_use_z": false,
                 "always_use_predt": true,
                 "dense_layer_dims": [4, 6],
                 "dropout": 0.1,
@@ -140,7 +141,7 @@
         "patience": 20,
         "shuffle": false,
         "validation_metric": "+f1-measure-overall",
-        "cuda_device": 1,
+        "cuda_device": 2,
         "noun_loss_scalar": 1.0,
         "verb_loss_scalar": 1.0,
         "gen_skip_nepoch": 0,
