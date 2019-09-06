@@ -158,7 +158,13 @@ class TrainerPieces(NamedTuple):
             old_model_dict = torch.load(old_model_path)
             for key, v in old_model_dict.items():
                 if '.' not in key: continue
-                idx = key.index('.')
+
+                #idx = key.index('.')
+
+                fields = key.split('.')
+                if len(fields) < 2: continue
+                idx = len('.'.join(fields[:2]))
+
                 field = key[:idx]
                 if field in update_key_set:
                     key = update_key_set[field] + key[idx:] 

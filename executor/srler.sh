@@ -3,10 +3,10 @@
 #word=v20.0
 #data=devel
 #post=verb
-fold=sri_vae_y_+nyt_c.5_128_sp0.10_rw_n20.0_le.20_lemma.ctx
-name=nyt
+fold=sri_vae_rz_nyt_z_c0.5_128_kl.5_re.0_ky.1_ll.1_b.z_sp1.5_-rw_rm.a.mean_n20.0_le.10_lemma.ctx.z
+name=rz_moved
 word=sri
-data=train.noun.morph
+data=test.noun.morph
 post=only
 #post=noun.morph.picked
 model_path=/disk/scratch1/s1847450/model/$fold/model.tar.gz
@@ -14,7 +14,7 @@ model_path=/disk/scratch1/s1847450/model/$fold/model.tar.gz
 input_file=/disk/scratch1/s1847450/data/conll09/morph.only/"$data"."$post"
 output_file=/disk/scratch1/s1847450/data/conll09/"$word"_"$name"_"$data"_"$post"
 bsize=150
-cuda_id=1
+cuda_id=3
 predictor=srl_naive
 
 library="nlpmimic"

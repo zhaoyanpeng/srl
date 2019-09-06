@@ -201,13 +201,13 @@ class Conll2009Sentence:
                     head_idx = idx
                 frames[head_idx] = label 
 
-    def restore_preposition_head(self, empty_label: str = 'O') -> None:
+    def restore_preposition_head(self, empty_label: str = 'O', preposition: str = 'IN') -> None:
         """ Restoring implies this Conll 2009 sentence has been moved before.
         """
         for _, _, frames in self.srl_frames:
             for idx, label in enumerate(frames):
                 head_idx = self.head_ids[idx] - 1
-                if label != empty_label and self.pos_tags[head_idx] == 'IN':
+                if label != empty_label and self.pos_tags[head_idx] == preposition:
                     frames[idx] = empty_label
                 else:
                     head_idx = idx
@@ -230,7 +230,7 @@ class Conll2009Sentence:
                     head_idx = idx
                 frames[head_idx] = label
 
-    def restore_preposition_head_general(self, empty_label: str = 'O') -> None:
+    def restore_preposition_head_general(self, empty_label: str = 'O', preposition: str = 'IN') -> None:
         """ Restoring implies this Conll 2009 sentence has been moved before.
             We traverse all possible `IN` ancestors of the predicate and do not
             allow its arguments to move back to any of the `IN` ancestors.
@@ -243,7 +243,7 @@ class Conll2009Sentence:
             nearest_in_root_idx = -1 
             while head_predicate != 0:
                 head_idx = head_predicate - 1
-                if self.pos_tags[head_idx] == 'IN':
+                if self.pos_tags[head_idx] == preposition:
                     nearest_in_root_idx = head_idx
                     father_in_idxes.add(head_idx) 
                 head_predicate = self.head_ids[head_idx]
@@ -252,8 +252,9 @@ class Conll2009Sentence:
                 head_idx = self.head_ids[idx] - 1
                 
                 if label != empty_label and \
-                    self.pos_tags[head_idx] == 'IN' and \
-                    head_idx not in father_in_idxes:
+                    self.pos_tags[head_idx] == preposition and \
+                    head_idx not in father_in_idxes and \
+                    head_idx <= idx:
                     frames[idx] = empty_label
                 else:
                     head_idx = idx
