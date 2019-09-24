@@ -54,6 +54,11 @@ class SrlHubAutoencoder(Model):
         if self.decoder is not None:
             self.decoder.add_parameters(nlemma, lemma_embedder)
 
+    def anneal_kl(self, kl_alpha: float=1., ky_alpha: float=1.):
+        self.kl_alpha = kl_alpha
+        #self.ky_alpha = ky_alpha
+        #print('-------------------------', self.kl_alpha, self.ky_alpha)
+
     def forward(self, 
                 mask: torch.Tensor,
                 node_types: torch.Tensor,

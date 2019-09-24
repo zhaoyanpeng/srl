@@ -46,6 +46,8 @@ class VaeSrlTrainer(Trainer):
                  shuffle: bool = True,
                  num_epochs: int = 20,
                  rec_in_training: bool =  False,
+                 kl_start: float = 1.,
+                 kl_epoch: float = 10.,
                  dis_min_loss: float = -1.,
                  dis_skip_nepoch: int = -1,
                  gen_skip_nepoch: int = -1, 
@@ -122,6 +124,11 @@ class VaeSrlTrainer(Trainer):
         self.feature_matching = feature_matching
         self.use_wgan = use_wgan 
         self.clip_val = clip_val
+
+        # vae
+        self.kl_start = kl_start
+        self.kl_epoch = kl_epoch
+        self.kl_vae_scalar = kl_start
 
         self.train_dx_data = train_dx_dataset 
         self.train_dy_data = train_dy_dataset
@@ -202,6 +209,8 @@ class VaeSrlTrainer(Trainer):
         num_training_batches = self.noun_sampler.nbatch() 
         #train_generator = self.verb_sampler.sample()
         #num_training_batches = self.verb_sampler.nbatch() 
+
+        kl_anneal_rate = (1.0 - self.kl_start) / (self.kl_epoch * num_training_batches)
         
         self._last_log = time.time()
         last_save_time = time.time()
@@ -239,6 +248,10 @@ class VaeSrlTrainer(Trainer):
             #print(noun_batch['argument_indices'])
 
             self.optimizer.zero_grad()
+
+            # kl term 
+            self.kl_vae_scalar = min(1.0, self.kl_vae_scalar + kl_anneal_rate)
+            self.model.anneal_kl(kl_alpha=self.kl_vae_scalar, ky_alpha=self.kl_vae_scalar)
 
             ### labeled data
             if self.verb_loss_scalar > 0:
@@ -605,6 +618,9 @@ class VaeSrlTrainer(Trainer):
         kld_update_unit = params.pop("kld_update_unit", None)
         dis_min_loss = params.pop("dis_min_loss", -1.)
         
+        kl_start = params.pop("kl_start", 1.)
+        kl_epoch = params.pop("kl_epoch", 1.) 
+
         noun_loss_scalar = params.pop("noun_loss_scalar", 1.)
         verb_loss_scalar = params.pop("verb_loss_scalar", 1.)
 
@@ -698,6 +714,8 @@ class VaeSrlTrainer(Trainer):
                    shuffle=shuffle,
                    num_epochs=num_epochs,
                    rec_in_training = rec_in_training,
+                   kl_start = kl_start,
+                   kl_epoch = kl_epoch,
                    dis_min_loss = dis_min_loss, 
                    dis_skip_nepoch = dis_skip_nepoch,
                    gen_skip_nepoch = gen_skip_nepoch,

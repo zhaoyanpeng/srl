@@ -49,6 +49,9 @@ class VaeSemanticRoleLabeler(Model):
         self.tau = self.classifier.tau
         initializer(self)
 
+    def anneal_kl(self, kl_alpha: float=1., ky_alpha: float=1.):
+        self.autoencoder.anneal_kl(kl_alpha=kl_alpha, ky_alpha=ky_alpha)
+
     #@profile    
     def forward(self,  # type: ignore
                 tokens: Dict[str, torch.LongTensor],
