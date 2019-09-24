@@ -181,6 +181,7 @@ class TestConll2009Reader():
         print('\n|vocab of predicates| is {}'.format(len(conll_reader.predicate_set)))
         print('|vocab of predicates| is {}'.format(len(predicate_dict)))
 
+    #@pytest.mark.skip(reason="mute")
     @pytest.mark.parametrize("lazy", (True,))
     @pytest.mark.parametrize("move", (True,))
     def test_predicate_file(self, lazy, move):
@@ -195,13 +196,16 @@ class TestConll2009Reader():
         #ifile = droot + 'noun.bit'
 
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        droot = "/disk/scratch1/s1847450/data/conll09/lemma.only/"
         #ifile = droot + 'verb.vocab.src'
         #ofile = droot + 'verb.all.predicate.vocab'
 
         #ifile = droot + 'vocab.src'
 
         ifile = droot + 'all.morph.only.vocab.src'
-        ofile = droot + 'all.morph.only.predicate.vocab' 
+
+        ifile = droot + 'all.morph.only.moved.vocab.src'
+        ofile = droot + 'all.morph.only.predicate.vocab.json' 
 
 
         instances = conll_reader.read(ifile)
@@ -245,11 +249,15 @@ class TestConll2009Reader():
         #ifile = droot + 'noun.bit'
 
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+
+        droot = "/disk/scratch1/s1847450/data/conll09/lemma.only/"
         #ifile = droot + 'noun.vocab.src'
         ifile = droot + 'all.morph.only.vocab.src'
+
+        ifile = droot + 'all.morph.only.moved.vocab.src'
         
         #ofile = droot + 'noun.all.moved.arg.vocab' 
-        ofile = droot + 'all.morph.only.moved.arg.vocab' 
+        ofile = droot + 'all.morph.only.moved.arg.vocab.json' 
         instances = conll_reader.read(ifile)
         
         arg_dict = Counter()

@@ -14,7 +14,7 @@ from nlpmimic.data.dataset_readers.conll2009 import Conll2009Sentence
 class TestConll2003Reader(NlpMimicTestCase):
     
 
-    @pytest.mark.skip(reason="mute")
+    #@pytest.mark.skip(reason="mute")
     def test_move_head(self):
         ofile = min_valid_lemmas = valid_srl_labels = None
         conll_reader = Conll2009DatasetReader(lazy=True, 
@@ -37,9 +37,11 @@ class TestConll2003Reader(NlpMimicTestCase):
         ofile = ifile + '.moved' 
         """
 
-        fname = 'train.noun.morph.only'
+        fname = 'devel.noun.morph.only'
+        fname = 'train.verb'
         droot = "/disk/scratch1/s1847450/data/conll09/separated/"
         droot = "/disk/scratch1/s1847450/data/conll09/morph.only/"
+        droot = "/disk/scratch1/s1847450/data/conll09/morph.stem/"
 
         #fname = 'verb.bit'
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
@@ -58,6 +60,7 @@ class TestConll2003Reader(NlpMimicTestCase):
         #droot = "/disk/scratch1/s1847450/data/conll09/bitgan/"
         #ifile = droot + 'verb.bit'
         
+        conll_reader.flatten_number = True
         with open(ofile, 'w') as fw:
             for sentence in conll_reader._sentences(ifile):
                 for head in conll_reader.moved_preposition_head:
@@ -67,6 +70,7 @@ class TestConll2003Reader(NlpMimicTestCase):
                         if x == 'O':
                             frame[i] = '_'
                 #print(sentence.format())
+                sentence.lemmas = conll_reader.filter_lemmas(sentence.lemmas, sentence)
                 fw.write(sentence.format() + '\n')
             
         

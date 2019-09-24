@@ -1,5 +1,5 @@
 # pylint: disable=no-self-use,invalid-name
-import pytest
+import pytest, sys
 import itertools, json
 
 from tqdm import tqdm
@@ -86,13 +86,46 @@ def main_arg_lemma():
     stats = arg_lemma(ifile, use_sense = use_sense)
     write_arg_syntax(stats, ofile)
 
+def main_arg_lemma_new():
+    ofile = None
+    firstk = sys.maxsize
+    valid_srl_labels = None
+    min_valid_lemmas = None
+    
+    conll_reader = ConllxUnlabeledDatasetReader(lazy = False,
+                                          lemma_file = ofile,
+                                          lemma_use_firstk = 5,
+                                          feature_labels=['pos', 'dep'], 
+                                          instance_type='srl_graph',
+                                          maximum_length = 80,
+                                          min_valid_lemmas = min_valid_lemmas,
+                                          max_num_argument = 7, 
+                                          valid_srl_labels = valid_srl_labels,
+                                          allow_null_predicate = False)
+
+    droot = "/disk/scratch1/s1847450/data/nytimes.new/morph.stem/"
+    ctx_name = "nyt.verb.20.10.1000"
+    context_file =  droot + ctx_name 
+
+
+    print(context_file)
+    instances = conll_reader._sentences(context_file, appendix_path=None, 
+                                   appendix_type='nyt_learn')
+    ifile = instances
+    ofile = droot + 'lemma.stem/{}.model'.format(ctx_name) 
+
+    use_sense = False    
+    stats = arg_lemma(ifile, use_sense = use_sense)
+    write_arg_syntax(stats, ofile)
+
 class TestConll2003Reader(NlpMimicTestCase):
 
-    @pytest.mark.skip(reason="mute")
-    def test_move_head(self):
-        main_arg_lemma()
-
     #@pytest.mark.skip(reason="mute")
+    def test_move_head(self):
+        #main_arg_lemma()
+        main_arg_lemma_new()
+
+    @pytest.mark.skip(reason="mute")
     def test_conllx_reader(self):
         valid_srl_labels = ["A0", "A1", "A2", "A3", "A4", "A5", "AM-ADV", "AM-CAU", "AM-DIR", 
                             "AM-EXT", "AM-LOC", "AM-MNR", "AM-NEG", "AM-PRD", "AM-TMP"]

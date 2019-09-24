@@ -1,5 +1,5 @@
-#pytest nlpmimic/tests/data/dataset_readers/srl_nyt_test.py \
-#    -s --show-capture=no -p no:warnings -vv  -o log_cli_level=INFO -o log_cli=true 
+pytest nlpmimic/tests/data/dataset_readers/srl_nyt_test.py \
+    -s --show-capture=no -p no:warnings -vv  -o log_cli_level=INFO -o log_cli=true 
 
 #pytest nlpmimic/tests/data/dataset_readers/srl_c09_test.py \
 #    -s --show-capture=no -p no:warnings -vv -o log_cli_level=INFO -o log_cli=true  
@@ -28,8 +28,8 @@
 #pytest nlpmimic/tests/data/dataset_readers/conllx_dataset_reader_test.py  \
 #    -s --show-capture=no -p no:warnings -vv 
 
-pytest nlpmimic/tests/data/dataset_readers/srl_common_test.py \
-    -s --show-capture=no -p no:warnings -vv 
+#pytest nlpmimic/tests/data/dataset_readers/srl_common_test.py \
+#    -s --show-capture=no -p no:warnings -vv 
 
 #pytest nlpmimic/tests/training/metrics/conll2009_scorer_test.py \
 #    -s --show-capture=no -p no:warnings -vv 

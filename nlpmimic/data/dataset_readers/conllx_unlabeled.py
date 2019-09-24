@@ -58,7 +58,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
     _EMPTY_PREDICATE = '@@UNKNOWN@@'
     _WILD_NUMBER = 'NNN'
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
-    _RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
+    #_RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
+    _RE_IS_A_NUM = '^\d+(?:([,]|[.]|[:]|[-]|[\\]|[\/]|\\\/)\d*){0,5}$'
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic' # srl_gan
     _DEFAULT_APPENDIX_TYPE = 'nyt_infer' # nyt_learn
@@ -166,7 +167,8 @@ class ConllxUnlabeledDatasetReader(DatasetReader):
             else:
                 pos_tags = sentence.pos_tags
             for idx, lemma in enumerate(lemmas):
-                if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                #if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                if re.match(self._RE_IS_A_NUM, lemma):
                     if len(sentence.tokens) > 0:
                         sentence.tokens[idx] = self._WILD_NUMBER 
                     if len(sentence.lemmas) > 0:

@@ -1,5 +1,5 @@
 from typing import Any, Type, TypeVar, Set, Dict, List, Sequence, Iterable, Optional, Tuple
-import itertools 
+import itertools, copy 
 import inspect 
 import logging
 import re, json
@@ -86,15 +86,20 @@ class Conll2009Sentence:
     def format(self, read_friendly: bool = True, space_width: int = 2) -> str:
         """ FIXME: Here assumming a valid Conll 2009 sentence, add sanity check.
         """
+        all_fields_but_srl = copy.deepcopy(self.all_fields_but_srl)
+        for idx, sign in enumerate(self.predicate_indicators):
+            if not sign: continue
+            all_fields_but_srl[-1][idx] = '{}.{:02.0f}'.format(
+            self.predicate_lemmas[idx], self.predicate_senses[idx])
         # format string items
         columns = []
         srl_frames = [frame for _, _, frame in self.srl_frames]
         if not read_friendly:
-            for idx, field in enumerate(self.all_fields_but_srl + srl_frames):
+            for idx, field in enumerate(all_fields_but_srl + srl_frames):
                 field = ['_' if x is None else x for x in field] # remove None
                 columns.append(self.padding_with_tab(field))
         else:
-            for idx, field in enumerate(self.all_fields_but_srl + srl_frames):
+            for idx, field in enumerate(all_fields_but_srl + srl_frames):
                 field = ['_' if x is None else x for x in field] # remove None
                 width = max([0] + [len(str(x)) for x in field]) + space_width
                 columns.append(self.padding_with_space(field, width, True))
@@ -305,7 +310,8 @@ class Conll2009DatasetReader(DatasetReader):
     _EMPTY_PREDICATE = '@@UNKNOWN@@'
     _WILD_NUMBER = 'NNN'
     _RE_SENSE_ID = '(^.*?)\.(\d+\.?\d*?)$'
-    _RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
+    #_RE_IS_A_NUM = '^\d+(?:[,.]\d*)?$'
+    _RE_IS_A_NUM = '^\d+(?:([,]|[.]|[:]|[-]|[\\]|[\/]|\\\/)\d*){0,5}$'
     _VALID_LABELS = {'dep', 'pos'}
     _DEFAULT_INSTANCE_TYPE = 'basic'
     _MAX_NUM_ARGUMENT = 7 
@@ -409,7 +415,8 @@ class Conll2009DatasetReader(DatasetReader):
             else:
                 pos_tags = sentence.pos_tags
             for idx, lemma in enumerate(lemmas):
-                if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                #if pos_tags[idx] == 'CD' and re.match(self._RE_IS_A_NUM, lemma):
+                if re.match(self._RE_IS_A_NUM, lemma):
                     if len(sentence.tokens) > 0:
                         sentence.tokens[idx] = self._WILD_NUMBER 
                     if len(sentence.lemmas) > 0:
@@ -725,6 +732,7 @@ class Conll2009DatasetReader(DatasetReader):
             if columns[13] != self._DUMMY:
                 lemma_sense = re.match(self._RE_SENSE_ID, columns[13]).groups()
                 plemma = lemma_sense[0] 
+                #psense = lemma_sense[1]
                 psense = float(lemma_sense[1])
                 predicates.append((index, plemma))
             else:
