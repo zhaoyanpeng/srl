@@ -1,0 +1,7 @@
+nltk==3.4.5
+numpy==1.18.5
+overrides==2.8.0
+pytest==5.3.5
+tensorboardX==1.2
+torch==1.4.0
+tqdm==4.47.0
